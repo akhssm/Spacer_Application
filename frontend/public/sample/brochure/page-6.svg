@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1200" width="1200" height="1200">
+  <rect width="1200" height="1200" fill="#f4f1e8"/>
+  <text x="80" y="200" font-family="'Inria Sans', 'Segoe UI', sans-serif" font-size="64" font-weight="700" fill="#14261d">Plot sizes</text>
+  <rect x="80" y="228" width="120" height="6" fill="#8a6d2f"/>
+  <text x="80" y="360" font-family="'Inria Sans', 'Segoe UI', sans-serif" font-size="26" font-weight="700" fill="#14261d">Plot type</text>
+  <text x="1120" y="360" font-family="'Inria Sans', 'Segoe UI', sans-serif" font-size="26" font-weight="700" fill="#14261d" text-anchor="end">Size</text>
+  <line x1="80" y1="390" x2="1120" y2="390" stroke="#d9d3c4" stroke-width="2"/>
+  <text x="80" y="450" font-family="'Inria Sans', 'Segoe UI', sans-serif" font-size="32" font-weight="400" fill="#5f6b64">Standard</text>
+  <text x="1120" y="450" font-family="'Inria Sans', 'Segoe UI', sans-serif" font-size="32" font-weight="400" fill="#14261d" text-anchor="end">1,800 sq.ft (200 sq.yd)</text>
+  <line x1="80" y1="480" x2="1120" y2="480" stroke="#d9d3c4" stroke-width="2"/>
+  <text x="80" y="540" font-family="'Inria Sans', 'Segoe UI', sans-serif" font-size="32" font-weight="400" fill="#5f6b64">Corner</text>
+  <text x="1120" y="540" font-family="'Inria Sans', 'Segoe UI', sans-serif" font-size="32" font-weight="400" fill="#14261d" text-anchor="end">2,160 sq.ft (240 sq.yd)</text>
+  <line x1="80" y1="570" x2="1120" y2="570" stroke="#d9d3c4" stroke-width="2"/>
+  <text x="80" y="630" font-family="'Inria Sans', 'Segoe UI', sans-serif" font-size="32" font-weight="400" fill="#5f6b64">Premium</text>
+  <text x="1120" y="630" font-family="'Inria Sans', 'Segoe UI', sans-serif" font-size="32" font-weight="400" fill="#14261d" text-anchor="end">2,700 sq.ft (300 sq.yd)</text>
+  <line x1="80" y1="660" x2="1120" y2="660" stroke="#d9d3c4" stroke-width="2"/>
+  <text x="80" y="720" font-family="'Inria Sans', 'Segoe UI', sans-serif" font-size="32" font-weight="400" fill="#5f6b64">Villa plot</text>
+  <text x="1120" y="720" font-family="'Inria Sans', 'Segoe UI', sans-serif" font-size="32" font-weight="400" fill="#14261d" text-anchor="end">3,600 sq.ft (400 sq.yd)</text>
+  <line x1="80" y1="750" x2="1120" y2="750" stroke="#d9d3c4" stroke-width="2"/>
+  <text x="80" y="1130" font-family="'Inria Sans', 'Segoe UI', sans-serif" font-size="22" fill="#5f6b64">Green Meadows · Sample brochure</text>
+  <text x="1120" y="1130" font-family="'Inria Sans', 'Segoe UI', sans-serif" font-size="22" fill="#5f6b64" text-anchor="end">6</text>
+</svg>

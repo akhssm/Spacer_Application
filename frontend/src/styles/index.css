@@ -1,0 +1,400 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+/*
+ * Typefaces — PROVISIONAL stand-ins until the official brand fonts are supplied.
+ *   display : Marcellus   (brochure headings, e.g. "MASTER PLAN", "TYPICAL FLOOR PLAN")
+ *   numeric : Oswald      (brochure condensed stat figures, e.g. "374", "C+S+10")
+ *   sans    : Geist       (body copy)
+ */
+@import "@fontsource/marcellus/400.css";
+@import "@fontsource-variable/oswald";
+@import "@fontsource-variable/geist";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * One design system, two brands:
+ *   - IRA Towers (default, :root / .dark) — palette sampled from the project brochure.
+ *   - Spacer platform (.theme-spacer) — the black-and-lime look of spacer.land, used by the
+ *     landing page and the project viewer.
+ * Both themes fill the same semantic contract (background, card, primary, muted-foreground, …),
+ * so shared components (Button, Dialog, Sheet, Badge, Reveal, flipbook, gallery) render
+ * correctly under either one. Components use the semantic tokens, never raw hex.
+ */
+
+/* ------------------------------------------------------------------ */
+/* 1. Brand palettes                                                   */
+/* ------------------------------------------------------------------ */
+:root {
+  /* Spacer — spacer.land */
+  --spacer-950: #0e0e0e;
+  --spacer-900: #101010;
+  --spacer-850: #141414;
+  --spacer-800: #1a1a1a;
+  --spacer-700: #2a2a2a;
+  --spacer-400: #8c8c8c;
+  --lime-500: #75c217;
+  --lime-600: #65a813;
+
+  /* IRA Towers — sampled from docs/Latest_Broucher.pdf */
+  --navy-950: #021f2d;
+  --navy-900: #053950; /* cover background, p1 */
+  --navy-800: #00364e; /* stat figures, p3 */
+  --teal-700: #005468; /* "MASTER PLAN" title, p6 */
+  --steel-500: #577d8f; /* block labels, p6 */
+  --steel-300: #baccd2;
+  --mist-100: #eceff5; /* info panels, p3 / p10–12 */
+  --mist-50: #f6f7fa;
+
+  --gold-700: #8a601e; /* leaf-motif stem, p7 */
+  --gold-500: #9f8046; /* hairline rules, p20–21 */
+  --gold-300: #d2c6ae;
+
+  --sun-400: #fdb912; /* IRA wordmark yellow, p1 */
+
+  --sand-200: #e5d8a7; /* unit tiles, master plan p6 */
+  --leaf-500: #95a451; /* landscape, master plan p6 */
+  --road-300: #b0b1b2; /* internal roads, master plan p6 */
+
+  /*
+   * Availability — one palette for every screen and the map layers (MapLibre paint mirrors these
+   * in src/utils/inventory.js). The IRA brochure has no status data, so the IRA site shows every
+   * unit as "unknown" (Enquire); the Spacer viewer shows its demo inventory with these colours.
+   */
+  --status-unknown: var(--sand-200);
+  --status-available: #4f9a6a;
+  --status-hold: #d9a441;
+  --status-booked: #4a7fb5;
+  --status-reserved: var(--status-booked);
+  --status-sold: #b5564a;
+
+  /* Brand accent for the current theme (IRA: sun yellow; Spacer: lime) */
+  --brand: var(--sun-400);
+  --brand-strong: #e5a70f;
+  --brand-foreground: var(--navy-950);
+  --panel: var(--mist-50);
+
+  /* Elevation & layering */
+  --elevation-soft: 0 1px 2px rgb(2 31 45 / 0.06), 0 8px 24px -8px rgb(2 31 45 / 0.18);
+  --elevation-float: 0 2px 4px rgb(2 31 45 / 0.08), 0 24px 48px -16px rgb(2 31 45 / 0.35);
+  --z-canvas: 0;
+  --z-overlay: 10;
+  --z-dock: 20;
+  --z-header: 30;
+  --z-drawer: 40;
+  --z-modal: 50;
+  --z-toast: 60;
+
+  --header-h: 4.5rem;
+  --radius: 0.75rem;
+
+  /* ---------------------------------------------------------------- */
+  /* 2. Semantic tokens (shadcn contract) — light "day" theme          */
+  /* ---------------------------------------------------------------- */
+  --background: #ffffff;
+  --foreground: var(--navy-900);
+  --card: #ffffff;
+  --card-foreground: var(--navy-900);
+  --popover: #ffffff;
+  --popover-foreground: var(--navy-900);
+  --primary: var(--navy-900);
+  --primary-foreground: #ffffff;
+  --secondary: var(--mist-100);
+  --secondary-foreground: var(--navy-900);
+  --muted: var(--mist-100);
+  --muted-foreground: var(--steel-500);
+  --accent: var(--sun-400);
+  --accent-foreground: var(--navy-950);
+  --destructive: #b5564a;
+  --border: rgb(5 57 80 / 0.12);
+  --input: rgb(5 57 80 / 0.18);
+  --ring: var(--gold-500);
+
+  --chart-1: var(--navy-900);
+  --chart-2: var(--teal-700);
+  --chart-3: var(--gold-500);
+  --chart-4: var(--sun-400);
+  --chart-5: var(--steel-500);
+
+  --sidebar: var(--mist-50);
+  --sidebar-foreground: var(--navy-900);
+  --sidebar-primary: var(--navy-900);
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: var(--mist-100);
+  --sidebar-accent-foreground: var(--navy-900);
+  --sidebar-border: rgb(5 57 80 / 0.12);
+  --sidebar-ring: var(--gold-500);
+}
+
+/* Dark "night" theme — used by the immersive explorer and dark sections (apply with .dark). */
+.dark {
+  --background: var(--navy-950);
+  --foreground: #f2f4f7;
+  --card: #06324a;
+  --card-foreground: #f2f4f7;
+  --popover: #06324a;
+  --popover-foreground: #f2f4f7;
+  --primary: #ffffff;
+  --primary-foreground: var(--navy-900);
+  --secondary: rgb(255 255 255 / 0.08);
+  --secondary-foreground: #f2f4f7;
+  --muted: rgb(255 255 255 / 0.06);
+  --muted-foreground: var(--steel-300);
+  --accent: var(--sun-400);
+  --accent-foreground: var(--navy-950);
+  --destructive: #d27064;
+  --border: rgb(255 255 255 / 0.12);
+  --input: rgb(255 255 255 / 0.16);
+  --ring: var(--gold-300);
+
+  --sidebar: var(--navy-900);
+  --sidebar-foreground: #f2f4f7;
+  --sidebar-primary: var(--sun-400);
+  --sidebar-primary-foreground: var(--navy-950);
+  --sidebar-accent: rgb(255 255 255 / 0.08);
+  --sidebar-accent-foreground: #f2f4f7;
+  --sidebar-border: rgb(255 255 255 / 0.12);
+  --sidebar-ring: var(--gold-300);
+
+  --panel: var(--navy-900);
+}
+
+/*
+ * Spacer platform theme — the landing page and the project viewer. Always dark: apply together
+ * with .dark (class="dark theme-spacer") so `dark:` variants in shared primitives also apply.
+ */
+.theme-spacer {
+  --background: var(--spacer-900);
+  --foreground: #ffffff;
+  --card: var(--spacer-800);
+  --card-foreground: #ffffff;
+  --popover: var(--spacer-800);
+  --popover-foreground: #ffffff;
+  --primary: var(--lime-500);
+  --primary-foreground: var(--spacer-950);
+  --secondary: rgb(255 255 255 / 0.08);
+  --secondary-foreground: #ffffff;
+  --muted: rgb(255 255 255 / 0.06);
+  --muted-foreground: var(--spacer-400);
+  --accent: var(--lime-500);
+  --accent-foreground: var(--spacer-950);
+  --destructive: #d9534f;
+  --border: var(--spacer-700);
+  --input: var(--spacer-700);
+  --ring: var(--lime-500);
+
+  --brand: var(--lime-500);
+  --brand-strong: var(--lime-600);
+  --brand-foreground: var(--spacer-950);
+  --panel: var(--spacer-850);
+
+  --elevation-float: 0 2px 4px rgb(0 0 0 / 0.3), 0 24px 48px -16px rgb(0 0 0 / 0.7);
+}
+
+/* ------------------------------------------------------------------ */
+/* 3. Tailwind theme mapping                                           */
+/* ------------------------------------------------------------------ */
+@theme inline {
+  --font-sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Marcellus", ui-serif, Georgia, serif;
+  --font-numeric: "Oswald Variable", "Arial Narrow", sans-serif;
+  --font-heading: var(--font-display);
+
+  --color-navy-950: var(--navy-950);
+  --color-navy-900: var(--navy-900);
+  --color-navy-800: var(--navy-800);
+  --color-teal-700: var(--teal-700);
+  --color-steel-500: var(--steel-500);
+  --color-steel-300: var(--steel-300);
+  --color-mist-100: var(--mist-100);
+  --color-mist-50: var(--mist-50);
+  --color-gold-700: var(--gold-700);
+  --color-gold-500: var(--gold-500);
+  --color-gold-300: var(--gold-300);
+  --color-sun-400: var(--sun-400);
+  --color-sand-200: var(--sand-200);
+  --color-leaf-500: var(--leaf-500);
+  --color-road-300: var(--road-300);
+
+  --color-status-unknown: var(--status-unknown);
+  --color-status-available: var(--status-available);
+  --color-status-hold: var(--status-hold);
+  --color-status-booked: var(--status-booked);
+  --color-status-reserved: var(--status-reserved);
+
+  --color-brand: var(--brand);
+  --color-brand-strong: var(--brand-strong);
+  --color-brand-foreground: var(--brand-foreground);
+  --color-panel: var(--panel);
+  --color-status-sold: var(--status-sold);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+
+  --shadow-soft: var(--elevation-soft);
+  --shadow-float: var(--elevation-float);
+
+  /* Motion — mirrored in src/utils/motion.js for Framer Motion */
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out-quint: cubic-bezier(0.83, 0, 0.17, 1);
+}
+
+@theme {
+  --container-page: 80rem;
+  --container-prose: 42rem;
+
+  /* Fluid type scale */
+  --text-display: clamp(2.75rem, 1.6rem + 4.8vw, 5.5rem);
+  --text-display--line-height: 1.02;
+  --text-title: clamp(2rem, 1.4rem + 2.4vw, 3.25rem);
+  --text-title--line-height: 1.1;
+  --text-stat: clamp(2.5rem, 1.8rem + 3vw, 4.25rem);
+  --text-stat--line-height: 1;
+}
+
+/* ------------------------------------------------------------------ */
+/* 4. Utilities                                                        */
+/* ------------------------------------------------------------------ */
+@utility container-page {
+  width: 100%;
+  max-width: var(--container-page);
+  margin-inline: auto;
+  padding-inline: clamp(1rem, 4vw, 2.5rem);
+}
+
+/* Small tracked caps label, as used for "P R O X I M I T Y" and section eyebrows. */
+@utility eyebrow {
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+}
+
+/*
+ * Grows a small control's tappable area to the 44x44 minimum without changing how it looks.
+ * The pseudo-element is part of the element's own hit region, so the visual size is preserved.
+ * Do not use inside an `overflow: hidden` ancestor — the extra area would be clipped away.
+ */
+@utility touch-target {
+  position: relative;
+
+  &::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 100%;
+    height: 100%;
+    min-width: 44px;
+    min-height: 44px;
+    translate: -50% -50%;
+  }
+}
+
+/* The brochure's thin gold hairline. */
+@utility gold-rule {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--gold-500) 15%, var(--gold-500) 85%, transparent);
+}
+
+/* Faint square grid behind the Spacer hero. */
+@utility bg-grid {
+  background-image:
+    linear-gradient(rgb(255 255 255 / 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(255 255 255 / 0.03) 1px, transparent 1px);
+  background-size: 56px 56px;
+}
+
+/* Spacer's lime button glow on hover. */
+@utility glow-brand {
+  box-shadow: 0 10px 28px color-mix(in oklab, var(--brand) 35%, transparent);
+}
+
+/* ------------------------------------------------------------------ */
+/* 5. Base                                                             */
+/* ------------------------------------------------------------------ */
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply font-sans antialiased;
+    text-rendering: optimizeLegibility;
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply min-h-svh bg-background text-foreground;
+  }
+  h1,
+  h2,
+  h3 {
+    @apply font-display font-normal tracking-tight text-balance;
+  }
+  ::selection {
+    background: var(--brand);
+    color: var(--brand-foreground);
+  }
+
+  /* Spacer headings are set in the body sans (bold, set per element), not the brochure serif. */
+  .theme-spacer :is(h1, h2, h3) {
+    font-family: var(--font-sans);
+    letter-spacing: normal;
+  }
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
