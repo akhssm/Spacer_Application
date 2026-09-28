@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1200" width="1200" height="1200">
+  <rect width="1200" height="1200" fill="#14261d"/>
+  
+  <rect x="80" y="80" width="1040" height="1040" fill="none" stroke="#c9a45c" stroke-width="2"/>
+  <text x="600" y="520" font-family="'Inria Sans', 'Segoe UI', sans-serif" font-size="120" font-weight="700" fill="#f4f1e8" text-anchor="middle" letter-spacing="6">GREEN</text>
+  <text x="600" y="640" font-family="'Inria Sans', 'Segoe UI', sans-serif" font-size="120" font-weight="700" fill="#f4f1e8" text-anchor="middle" letter-spacing="6">MEADOWS</text>
+  <rect x="540" y="690" width="120" height="6" fill="#c9a45c"/>
+  <text x="600" y="760" font-family="'Inria Sans', 'Segoe UI', sans-serif" font-size="34" fill="#b9c4bb" text-anchor="middle">Premium residential plots · Hyderabad</text>
+  <text x="80" y="1130" font-family="'Inria Sans', 'Segoe UI', sans-serif" font-size="22" fill="#b9c4bb">Green Meadows · Sample brochure</text>
+  <text x="1120" y="1130" font-family="'Inria Sans', 'Segoe UI', sans-serif" font-size="22" fill="#b9c4bb" text-anchor="end"></text>
+</svg>

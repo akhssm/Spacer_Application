@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Provisional monogram until the official V4 Ventures SVG logo is supplied. -->
+  <rect width="64" height="64" rx="14" fill="#053950"/>
+  <path d="M14 18h7l6 20 6-20h7l-10 28h-6z" fill="#fff"/>
+  <path d="M44 18h5v16h3v5h-3v7h-5v-7h-9v-4zm0 8-4 8h4z" fill="#fdb912"/>
+</svg>
