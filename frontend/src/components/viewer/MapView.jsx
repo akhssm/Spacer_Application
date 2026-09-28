@@ -85,6 +85,34 @@ const LAYERS = [
 const CLICKABLE_LAYERS = ['plots-fill', 'plots-3d']
 const BLOCK_LAYERS = ['blocks-dim']
 
+// How far (in zoom levels) the 3D camera stays back from a chosen block, to keep its surroundings
+const BLOCK_CONTEXT_ZOOM = 0.6
+
+function projectBounds(project) {
+  const bounds = new LngLatBounds()
+  const rings = [project.layout.boundary, ...project.layout.plots.map((plot) => plot.polygon)]
+  rings.filter(Boolean).forEach((ring) => ring.forEach((point) => bounds.extend(point)))
+  if (bounds.isEmpty()) bounds.extend(project.location)
+  return bounds
+}
+
+// Frame bounds in 3D without flattening or turning the view: the camera keeps its pitch and
+// bearing, and backs off by `zoomBack` levels. Room is left for the side panel or bottom sheet.
+function ease3D(map, bounds, zoomBack) {
+  const desktop = window.innerWidth >= 768
+  const camera = map.cameraForBounds(bounds, {
+    bearing: map.getBearing(),
+    padding: {
+      top: 80,
+      bottom: desktop ? 80 : Math.round(window.innerHeight * 0.45),
+      left: 40,
+      right: desktop ? 440 : 40,
+    },
+  })
+  if (!camera) return
+  map.easeTo({ center: camera.center, zoom: camera.zoom - zoomBack, duration: 800 })
+}
+
 // Where the map should keep its centre when a side panel covers part of it
 const panelOffset = () => (window.innerWidth >= 768 ? [-200, -40] : [0, -140])
 
@@ -116,6 +144,8 @@ function MapView({
   colorMode,
   selectedPlot,
   selectedBlock,
+  selectedFloor,
+  selectedAmenity,
   onSelectPlot,
   onSelectBlock,
   userPosition,
@@ -130,6 +160,14 @@ function MapView({
   // Latest handlers, so the map's click listener is bound once
   const selectRef = useRef(onSelectPlot)
   const selectBlockRef = useRef(onSelectBlock)
+  const is3DRef = useRef(false) // read by the map's click and hover listeners
+  // The 3D selection, for a buildings layer that finishes loading after it was made
+  const selectionRef = useRef({
+    block: selectedBlock,
+    tower: selectedPlot?.number,
+    floor: selectedFloor,
+    amenity: selectedAmenity,
+  })
 
   const [ready, setReady] = useState(false) // true once the map style and layers are loaded
   const [heading, setHeading] = useState(0)
@@ -143,11 +181,7 @@ function MapView({
   // Zoom so the whole layout is in view
   const fitProject = useCallback(
     (map) => {
-      const bounds = new LngLatBounds()
-      const rings = [project.layout.boundary, ...project.layout.plots.map((plot) => plot.polygon)]
-      rings.filter(Boolean).forEach((ring) => ring.forEach((point) => bounds.extend(point)))
-      if (bounds.isEmpty()) bounds.extend(project.location)
-      map.fitBounds(bounds, { padding: 80, duration: 600 })
+      map.fitBounds(projectBounds(project), { padding: 80, duration: 600 })
     },
     [project],
   )
@@ -189,12 +223,36 @@ function MapView({
           if (mapRef.current !== map) return // the page closed while loading
           buildingsRef.current = createBuildingsLayer(project)
           map.addLayer(buildingsRef.current)
+          buildingsRef.current.setSelection(selectionRef.current)
         })
       }
 
+      // What is under the pointer in 3D ({ block, tower, floor } or { amenity }), when the
+      // buildings are showing
+      const pickBuilding = (point) => (is3DRef.current ? (buildingsRef.current?.pick(point) ?? null) : null)
+      const plotByNumber = (number) => project.layout.plots.find((p) => p.number === number) ?? null
+
       // A click on a plot selects it, a click on a block chooses that block,
-      // and a click anywhere else clears the plot selection
+      // and a click anywhere else clears the plot selection. In 3D the buildings
+      // stand above their footprints: a click on a tower's residential part selects
+      // that tower ON THAT FLOOR (the same plot a 2D click selects, plus the storey
+      // the click landed on); its stilt or roof selects the tower alone; the
+      // clubhouse (or the pool on it) selects that amenity; and a block's shared
+      // corridor or cores choose the block.
       map.on('click', (event) => {
+        const building = pickBuilding(event.point)
+        if (building?.amenity) {
+          selectRef.current(plotByNumber(building.amenity))
+          return
+        }
+        if (building?.tower) {
+          selectRef.current(plotByNumber(building.tower), building.floor)
+          return
+        }
+        if (building) {
+          selectBlockRef.current(building.block)
+          return
+        }
         const hits = map.queryRenderedFeatures(event.point, { layers: CLICKABLE_LAYERS })
         if (hits.length) {
           selectRef.current(project.layout.plots.find((p) => p.number === hits[0].properties.number) || null)
@@ -208,9 +266,16 @@ function MapView({
         selectRef.current(null)
       })
       map.on('mousemove', (event) => {
-        const hits = map.queryRenderedFeatures(event.point, { layers: [...CLICKABLE_LAYERS, ...BLOCK_LAYERS] })
+        const building = pickBuilding(event.point)
+        buildingsRef.current?.setHover(
+          building?.amenity ? { amenity: building.amenity } : building?.tower ? building : null,
+        )
+        const hits = building
+          ? [building]
+          : map.queryRenderedFeatures(event.point, { layers: [...CLICKABLE_LAYERS, ...BLOCK_LAYERS] })
         map.getCanvas().style.cursor = hits.length ? 'pointer' : ''
       })
+      map.getCanvas().addEventListener('mouseleave', () => buildingsRef.current?.setHover(null))
 
       fitProject(map)
       setReady(true)
@@ -218,7 +283,11 @@ function MapView({
     map.on('rotate', () => setHeading(map.getBearing()))
 
     mapRef.current = map
+    // Development-only test hook (tree-shaken from production builds), like the explorer's
+    // window.__ira3d: lets automated QA find the buildings on screen and click them.
+    if (import.meta.env.DEV) window.__spacerMap = { map, buildings: () => buildingsRef.current }
     return () => {
+      if (import.meta.env.DEV) delete window.__spacerMap
       map.remove()
       mapRef.current = null
       buildingsRef.current = null
@@ -239,19 +308,46 @@ function MapView({
     }
   }, [ready, selectedPlot])
 
-  // 3b. Zoom to a block when it is chosen
+  // 2b. Tint the selected tower (and band its chosen floor) or amenity on the 3D buildings
+  const selectedTower = selectedAmenity ? undefined : selectedPlot?.number
   useEffect(() => {
-    if (!ready || !selectedBlock) return
+    selectionRef.current = {
+      block: selectedBlock,
+      tower: selectedTower,
+      floor: selectedFloor,
+      amenity: selectedAmenity,
+    }
+    buildingsRef.current?.setSelection(selectionRef.current)
+  }, [selectedBlock, selectedTower, selectedFloor, selectedAmenity])
+
+  // 3b. Zoom to a block when it is chosen (a chosen tower is framed by 3 instead). In 3D the
+  // camera keeps its tilt and heading and stays back a little, so the rest of the site is
+  // still in view around the block.
+  const framedBlock = useRef(null)
+  useEffect(() => {
+    if (!ready) return
+    const map = mapRef.current
+    const previous = framedBlock.current
+    framedBlock.current = selectedBlock
+    if (selectedTower) return
+    if (!selectedBlock) {
+      if (previous && is3DRef.current) ease3D(map, projectBounds(project), 0)
+      return
+    }
     const block = project.layout.blocks?.find((b) => b.name === selectedBlock)
     if (!block) return
     const bounds = new LngLatBounds()
     block.polygon.forEach((point) => bounds.extend(point))
+    if (is3DRef.current) {
+      ease3D(map, bounds, BLOCK_CONTEXT_ZOOM)
+      return
+    }
     const desktop = window.innerWidth >= 768
-    mapRef.current.fitBounds(bounds, {
+    map.fitBounds(bounds, {
       padding: { top: 90, bottom: desktop ? 120 : 260, left: 40, right: desktop ? 440 : 40 },
       duration: 700,
     })
-  }, [ready, project, selectedBlock])
+  }, [ready, project, selectedBlock, selectedTower])
 
   // 4. Show where the visitor is, and go there the first time GPS reports it
   useEffect(() => {
@@ -286,6 +382,8 @@ function MapView({
     const map = mapRef.current
     const buildings = buildingsRef.current
     buildings?.setVisible(on)
+    if (!on) buildings?.setHover(null)
+    is3DRef.current = on
     map.setLayoutProperty('plots-3d', 'visibility', on && !buildings ? 'visible' : 'none')
     map.setLayoutProperty('plots-fill', 'visibility', on ? 'none' : 'visible')
     // Flat numbers would float on top of the buildings, so they rest until 2D returns

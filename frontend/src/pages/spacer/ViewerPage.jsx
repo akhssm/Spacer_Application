@@ -1,8 +1,9 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useParams } from 'react-router'
+import { Link, Navigate, useLocation, useParams, useSearchParams } from 'react-router'
 import { ArrowLeft, BookOpen, Image, Info, LocateFixed, MessageCircle, Navigation, Search } from 'lucide-react'
 import { COMPARE_LIMIT, ComparePanel, CompareTray } from '@/components/viewer/ComparePanel'
 import MapView from '@/components/viewer/MapView'
+import { parseViewerSearch, viewerSearch } from '@/components/viewer/viewerUrl'
 import {
   AmenityPanel,
   BlockChips,
@@ -65,9 +66,9 @@ function ProjectNotFound({ shortCode }) {
 function ProjectViewer({ project }) {
   const [openPanel, setOpenPanel] = useState(null) // 'brochure' | 'search' | 'info' | null
   const [colorMode, setColorMode] = useState('plain') // 'plain' | 'zones' | 'status'
-  const [selectedPlot, setSelectedPlot] = useState(null)
-  const [selectedBlock, setSelectedBlock] = useState(null) // a block name, or null for all
-  const [selectedUnit, setSelectedUnit] = useState(null) // one flat on one floor, for the enquiry
+  // A chosen plot that is not a tower (an amenity, or a plot of a project without blocks), tied
+  // to the block filter it was chosen under: Back / Forward to another filter hides it again.
+  const [other, setOther] = useState(null) // { plot, scope }
   const [compareList, setCompareList] = useState([]) // [{ plot, unit }] picked for side-by-side comparison
   const [userPosition, setUserPosition] = useState(null)
   const [gpsOn, setGpsOn] = useState(false)
@@ -91,7 +92,28 @@ function ProjectViewer({ project }) {
 
   const blocks = project.layout.blocks ?? NO_BLOCKS
   const units = project.units ?? NO_UNITS
+
   const towerUnits = useMemo(() => unitsByTower(units), [units])
+
+  // The selection lives in the URL (?block=A&tower=A-01&floor=4), so a refresh, a shared link and
+  // the browser's Back / Forward all restore it. `block` is the block filter; `tower` is one tower
+  // (one flat stack, its own building in 3D); `floor` is a floor of that tower and never exists
+  // without it, so A-01 floor 4 and A-02 floor 4 are two different selections.
+  const location = useLocation()
+  const [search, setSearch] = useSearchParams()
+  const selection = parseViewerSearch(search, blocks, project.layout.plots)
+  const { block: selectedBlock, floor: selectedFloor } = selection
+  const selectedTower = selection.tower ? project.layout.plots.find((p) => p.number === selection.tower) : null
+  const canonicalSearch = viewerSearch(selection, blocks)
+  const selectedPlot = selectedTower ?? (other?.scope === selectedBlock ? other.plot : null)
+  // The tower's flat on the chosen floor: the one apartment that tower + floor holds
+  const selectedUnit =
+    selectedTower && selectedFloor ? towerUnits[selectedTower.number]?.find((u) => u.floor === selectedFloor) : null
+  const goTo = useCallback(
+    (block, tower = null, floor = null) => setSearch(viewerSearch({ block, tower, floor }, blocks)),
+    [setSearch, blocks],
+  )
+  const isTower = useCallback((plot) => plot.kind !== 'amenity' && blocks.some((b) => b.name === plot.zone), [blocks])
   // The map colours each tower from its units' statuses; kept stable so the map is not rebuilt
   const mapProject = useMemo(() => {
     if (!units.length) return project
@@ -113,24 +135,41 @@ function ProjectViewer({ project }) {
     }
   }, [project, units, towerUnits])
 
-  // Choosing a flat also chooses its block, so the other blocks fade back
+  // Choosing a tower selects only that tower (its block becomes the filter, so the other blocks
+  // fade back); a 3D click on one of its floors carries that floor along, and a click on its
+  // stilt or roof (no floor) keeps whatever floor it already had. Anything else that is chosen
+  // (an amenity such as the clubhouse) clears the tower. `null` (a click on empty map) clears
+  // the choice.
   const selectPlot = useCallback(
-    (plot) => {
-      setSelectedPlot(plot)
-      setSelectedUnit(null)
-      if (plot) {
-        setOpenPanel(null)
-        if (blocks.some((block) => block.name === plot.zone)) setSelectedBlock(plot.zone)
+    (plot, floor = null) => {
+      setOpenPanel(null)
+      setOther(null)
+      if (plot && isTower(plot)) {
+        const kept = plot.number === selection.tower ? selectedFloor : null
+        const next = floor ?? kept
+        if (plot.number !== selection.tower || next !== selectedFloor) goTo(plot.zone, plot.number, next)
+        return
       }
+      if (selection.tower) goTo(selectedBlock)
+      if (plot) setOther({ plot, scope: selectedBlock })
     },
-    [blocks],
+    [isTower, selection.tower, selectedFloor, selectedBlock, goTo],
   )
 
-  const selectBlock = useCallback((name) => {
-    setSelectedBlock(name)
-    setSelectedPlot(null)
-    setSelectedUnit(null)
-  }, [])
+  // The block filter: choosing a block shows that block with no tower chosen
+  const selectBlock = useCallback(
+    (name) => {
+      setOther(null)
+      if (name !== selectedBlock || selection.tower) goTo(name)
+    },
+    [selectedBlock, selection.tower, goTo],
+  )
+
+  // A floor of the selected tower; choosing the chosen floor (or no unit) clears it
+  const setSelectedUnit = (unit) =>
+    goTo(selectedBlock, selection.tower, unit && unit.floor !== selectedFloor ? unit.floor : null)
+  // Closing the tower keeps its block as the filter
+  const closeFlat = () => (selectedTower ? goTo(selectedBlock) : setOther(null))
 
   // Add or remove the open flat (with its chosen floor) from the comparison
   const toggleCompare = () => {
@@ -143,11 +182,10 @@ function ProjectViewer({ project }) {
   }
   const compareIndex = selectedPlot ? compareList.findIndex((entry) => entry.plot.number === selectedPlot.number) : -1
 
-  // From the block grid: open that tower's panel with the chosen floor highlighted
+  // From the block panel: open that tower, on the chosen floor when a grid cell was used
   const selectUnitInTower = (tower, unit) => {
-    setSelectedPlot(tower)
-    setSelectedUnit(unit)
     setOpenPanel(null)
+    goTo(tower.zone, tower.number, unit?.floor ?? null)
   }
 
   const stopGps = () => {
@@ -223,6 +261,9 @@ function ProjectViewer({ project }) {
     { icon: Navigation, label: 'Locate', href: directionsUrl(project.location) },
   ]
 
+  // A URL that is valid but not canonical (a floor without a tower, a tower under the wrong block)
+  if (location.search !== canonicalSearch) return <Navigate to={{ search: canonicalSearch }} replace />
+
   return (
     <main className="relative h-svh overflow-hidden bg-background">
       <MapView
@@ -230,6 +271,8 @@ function ProjectViewer({ project }) {
         colorMode={colorMode}
         selectedPlot={selectedPlot}
         selectedBlock={selectedBlock}
+        selectedFloor={selectedFloor}
+        selectedAmenity={selectedPlot?.kind === 'amenity' ? selectedPlot.number : null}
         onSelectPlot={selectPlot}
         onSelectBlock={selectBlock}
         userPosition={userPosition}
@@ -357,17 +400,12 @@ function ProjectViewer({ project }) {
               full: compareList.length >= COMPARE_LIMIT,
               onToggle: toggleCompare,
             }}
-            onClose={() => setSelectedPlot(null)}
+            onClose={closeFlat}
           />
         ) : selectedPlot.kind === 'amenity' ? (
-          <AmenityPanel project={project} plot={selectedPlot} onClose={() => setSelectedPlot(null)} />
+          <AmenityPanel project={project} plot={selectedPlot} onClose={closeFlat} />
         ) : (
-          <PlotCard
-            project={project}
-            plot={selectedPlot}
-            showStatus={colorMode === 'status'}
-            onClose={() => setSelectedPlot(null)}
-          />
+          <PlotCard project={project} plot={selectedPlot} showStatus={colorMode === 'status'} onClose={closeFlat} />
         ))}
       {blockPanelOpen && !openPanel && (
         <BlockPanel
@@ -375,7 +413,7 @@ function ProjectViewer({ project }) {
           block={selectedBlock}
           units={units.filter((unit) => unit.block === selectedBlock)}
           onSelectUnit={selectUnitInTower}
-          onClose={() => setSelectedBlock(null)}
+          onClose={() => goTo(null)}
         />
       )}
       {openPanel === 'search' && (
