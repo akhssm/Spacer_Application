@@ -6,8 +6,9 @@ import { STATUS_BG, STATUS_LABEL, STATUS_ORDER, countByStatus } from '@/utils/in
 import GalleryViewer from '@/components/gallery/GalleryViewer'
 import { BrochureImage } from '@/components/media/BrochureImage'
 import { FlatPlanCrop } from '@/components/explore/FlatPlan'
-import { apartmentId } from '@/data'
+import { getApartment, getBlock } from '@/data'
 import { paths } from '@/routes/paths'
+import { getTourForApartment } from '@/components/explore/tour/tours'
 
 const SIDE_PANEL =
   'absolute inset-x-3 bottom-3 z-20 max-h-[75svh] overflow-y-auto rounded-xl border border-border bg-panel/95 p-5 text-sm backdrop-blur md:inset-x-auto md:top-20 md:right-5 md:bottom-5 md:max-h-none md:w-96'
@@ -41,94 +42,137 @@ export function StatusCounts({ counts, size = 'sm' }) {
   )
 }
 
-// One block's inventory: a grid with a column per tower and a row per floor,
-// every cell one unit coloured by status. Clicking a cell opens that flat.
+// The block filter: the chosen block's towers to pick from, and (folded away, so the panel stays
+// compact over the map) its inventory grid: a column per tower, a row per floor, every cell one
+// unit coloured by status. A block has no floor of its own: floors belong to a tower, so picking
+// a tower, or a cell (a tower on one floor), is how a floor is chosen.
 export function BlockPanel({ project, block, units, onSelectUnit, onClose }) {
   const towers = project.layout.plots.filter((plot) => plot.kind !== 'amenity' && plot.zone === block)
   const floors = [...new Set(units.map((unit) => unit.floor))].sort((a, b) => b - a)
   const byKey = new Map(units.map((unit) => [`${unit.tower}/${unit.floor}`, unit]))
-  const floorCounts = (floor) => countByStatus(units.filter((unit) => unit.floor === floor))
+  const floorCounts = (level) => countByStatus(units.filter((unit) => unit.floor === level))
   const towerCounts = (tower) => countByStatus(units.filter((unit) => unit.tower === tower))
+  const unitLabel = project.unitLabel.toLowerCase()
+  // The IRA Towers block behind this one, when its flats carry brochure plans
+  const declared = getBlock(towers.find((tower) => tower.plan)?.plan.blockId)?.declaredUnits.value
 
   return (
-    <aside aria-label={`${block} inventory`} className={SIDE_PANEL}>
+    <aside aria-label={`${block} details`} className={`${SIDE_PANEL} max-h-[55svh]`}>
       <div className="mb-3 flex items-start justify-between gap-3">
         <div>
+          <p className="text-[10px] font-bold tracking-[0.15em] text-brand uppercase">Block</p>
           <h2 className="text-xl font-bold">{block}</h2>
           <p className="text-xs text-muted-foreground">
-            {towers.length} towers · {floors.length} floors · {units.length} {project.unitLabel.toLowerCase()}s
+            {towers.length} towers · {floors.length} floors · {units.length} {unitLabel}s
           </p>
+          {declared !== undefined && declared !== units.length && (
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              The brochure declares {declared} {unitLabel}s; its typical floor plan shows {units.length}.
+            </p>
+          )}
         </div>
         <button
           type="button"
           onClick={onClose}
-          aria-label={`Close ${block}`}
+          aria-label={`Clear ${block} filter`}
+          title="Show all blocks"
           className="cursor-pointer rounded-full p-1 text-muted-foreground hover:text-white"
         >
           <X size={20} />
         </button>
       </div>
 
-      <StatusCounts counts={countByStatus(units)} />
-      <SampleInventoryNote project={project} className="mt-2" />
-
       {units.length === 0 ? (
-        <p className="mt-4 text-muted-foreground">No inventory yet for this block.</p>
+        <p className="text-muted-foreground">No inventory yet for this block.</p>
       ) : (
-        <div className="mt-4 overflow-x-auto">
-          <table className="border-separate border-spacing-0.5 text-[10px] leading-none">
-            <thead>
-              <tr>
-                <th className="pr-1 text-left font-normal text-muted-foreground">Floor</th>
-                {towers.map((tower) => (
-                  <th
-                    key={tower.number}
-                    className="w-5 pb-1 font-bold text-white/85"
-                    title={`${project.unitLabel} ${tower.number}`}
-                  >
-                    {tower.number.replace(/^.*-/, '')}
-                  </th>
-                ))}
-                <th className="pl-1 text-left font-normal text-muted-foreground">Avail.</th>
-              </tr>
-            </thead>
-            <tbody>
-              {floors.map((floor) => (
-                <tr key={floor}>
-                  <th className="pr-1 text-left font-bold text-white/85">{floor}</th>
-                  {towers.map((tower) => {
-                    const unit = byKey.get(`${tower.number}/${floor}`)
-                    return (
-                      <td key={tower.number}>
-                        {unit && (
-                          <button
-                            type="button"
-                            onClick={() => onSelectUnit(tower, unit)}
-                            title={`${unit.number}: ${STATUS_LABEL[unit.status]}`}
-                            aria-label={`${unit.number}, ${STATUS_LABEL[unit.status]}`}
-                            className={`block size-5 cursor-pointer rounded-sm transition-transform hover:scale-125 ${STATUS_BG[unit.status]}`}
-                          />
-                        )}
+        <>
+          <h3 id="tower-picker" className="mb-2 text-xs font-bold tracking-[0.15em] text-muted-foreground uppercase">
+            Select tower
+          </h3>
+          <div role="group" aria-labelledby="tower-picker" className="grid grid-cols-4 gap-1.5">
+            {towers.map((tower) => (
+              <button
+                key={tower.number}
+                type="button"
+                onClick={() => onSelectUnit(tower, null)}
+                aria-label={`Tower ${tower.number}`}
+                className="flex cursor-pointer flex-col items-center rounded-md border border-border py-1.5 leading-tight transition-colors hover:border-white/40"
+              >
+                <span className="text-sm font-bold">{tower.number}</span>
+                {tower.bhk && <span className="text-[10px] text-muted-foreground">{tower.bhk}</span>}
+              </button>
+            ))}
+          </div>
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            Each tower is one stack of {unitLabel}s, one per floor. Tap a tower here or on the map.
+          </p>
+
+          <details className="mt-4 border-t border-border pt-3">
+            <summary className="cursor-pointer text-xs font-bold tracking-[0.15em] text-muted-foreground uppercase">
+              Availability, every tower and floor
+            </summary>
+            <div className="mt-3">
+              <StatusCounts counts={countByStatus(units)} />
+              <SampleInventoryNote project={project} className="mt-2" />
+            </div>
+            <div className="mt-4 overflow-x-auto">
+              <table className="border-separate border-spacing-0.5 text-[10px] leading-none">
+                <thead>
+                  <tr>
+                    <th className="pr-1 text-left font-normal text-muted-foreground">Floor</th>
+                    {towers.map((tower) => (
+                      <th
+                        key={tower.number}
+                        className="w-5 pb-1 font-bold text-white/85"
+                        title={`Tower ${tower.number}`}
+                      >
+                        {tower.number.replace(/^.*-/, '')}
+                      </th>
+                    ))}
+                    <th className="pl-1 text-left font-normal text-muted-foreground">Avail.</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {floors.map((level) => (
+                    <tr key={level}>
+                      <th className="pr-1 text-left font-bold text-white/85">{level}</th>
+                      {towers.map((tower) => {
+                        const unit = byKey.get(`${tower.number}/${level}`)
+                        return (
+                          <td key={tower.number}>
+                            {unit && (
+                              <button
+                                type="button"
+                                onClick={() => onSelectUnit(tower, unit)}
+                                title={`${unit.number}: ${STATUS_LABEL[unit.status]}`}
+                                aria-label={`${unit.number}, ${STATUS_LABEL[unit.status]}`}
+                                className={`block size-5 cursor-pointer rounded-sm transition-transform hover:scale-125 ${STATUS_BG[unit.status]}`}
+                              />
+                            )}
+                          </td>
+                        )
+                      })}
+                      <td className="pl-1 text-muted-foreground">{floorCounts(level).available}</td>
+                    </tr>
+                  ))}
+                  <tr>
+                    <th className="pt-1 pr-1 text-left font-normal text-muted-foreground">Avail.</th>
+                    {towers.map((tower) => (
+                      <td key={tower.number} className="pt-1 text-center text-muted-foreground">
+                        {towerCounts(tower.number).available}
                       </td>
-                    )
-                  })}
-                  <td className="pl-1 text-muted-foreground">{floorCounts(floor).available}</td>
-                </tr>
-              ))}
-              <tr>
-                <th className="pt-1 pr-1 text-left font-normal text-muted-foreground">Avail.</th>
-                {towers.map((tower) => (
-                  <td key={tower.number} className="pt-1 text-center text-muted-foreground">
-                    {towerCounts(tower.number).available}
-                  </td>
-                ))}
-                <td />
-              </tr>
-            </tbody>
-          </table>
-        </div>
+                    ))}
+                    <td />
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p className="mt-3 text-[11px] text-muted-foreground">
+              Each square is one flat: a tower on one floor. Tap a square to open it.
+            </p>
+          </details>
+        </>
       )}
-      <p className="mt-3 text-[11px] text-muted-foreground">Each square is one flat. Tap a square to see that flat.</p>
     </aside>
   )
 }
@@ -163,8 +207,10 @@ export function BlockChips({ blocks, selected, onSelect }) {
   )
 }
 
-// Everything about one flat position: type, facing, area, its floor plan, every
-// room's size, and the status of that flat on every floor
+// One tower (one flat position, stacked on every floor): type, facing, area, a floor picker with
+// the status of its flat on every floor, its floor plan, every room's size and, once a floor is
+// chosen, that tower + floor's flat and its walkthrough. Projects whose plots have no floors show
+// the same panel without the floor parts.
 export function FlatPanel({
   project,
   plot,
@@ -177,24 +223,27 @@ export function FlatPanel({
   onClose,
 }) {
   const area = formatArea(plot.areaSqFt / SQ_FT_PER_SQ_M)
-  const title = `${project.unitLabel} ${plot.number}`
+  const title = units.length ? `Tower ${plot.number}` : `${project.unitLabel} ${plot.number}`
   const chosen = selectedUnit ? ` (${selectedUnit.number}, floor ${selectedUnit.floor})` : ''
-  const message = `Hi, I am interested in ${title}${chosen} at ${project.name}: ${plot.bhk}, ${plot.facing} facing, ${area.sqft}.`
+  const message = `Hi, I am interested in ${project.unitLabel} ${plot.number}${chosen} at ${project.name}: ${plot.bhk}, ${plot.facing} facing, ${area.sqft}.`
   const counts = units.length ? countByStatus(units) : null
 
   return (
-    <aside aria-label={title} className={SIDE_PANEL}>
+    <aside aria-label={title} className={`${SIDE_PANEL} max-h-[55svh]`}>
       <div className="mb-3 flex items-start justify-between gap-3">
         <div>
+          {counts && <p className="text-[10px] font-bold tracking-[0.15em] text-brand uppercase">Selected tower</p>}
           <h2 className="text-xl font-bold">{title}</h2>
           <p className="text-xs text-muted-foreground">
             {plot.zone} · {project.name}
+            {counts && ` · ${units.length} floors · 1 ${project.unitLabel.toLowerCase()} per floor`}
           </p>
         </div>
         <button
           type="button"
           onClick={onClose}
           aria-label={`Close ${title}`}
+          title="Clear selection"
           className="cursor-pointer rounded-full p-1 text-muted-foreground hover:text-white"
         >
           <X size={20} />
@@ -212,49 +261,50 @@ export function FlatPanel({
 
       {counts && (
         <>
-          <h3 className="mb-2 text-xs font-bold tracking-[0.15em] text-muted-foreground uppercase">
-            Availability by floor
+          <h3 id="floor-picker" className="mb-2 text-xs font-bold tracking-[0.15em] text-muted-foreground uppercase">
+            Select floor
           </h3>
-          <StatusCounts counts={counts} />
-          <SampleInventoryNote project={project} className="mt-1.5" />
-          <ul className="mt-2 grid grid-cols-2 gap-1">
+          <div role="group" aria-labelledby="floor-picker" className="grid grid-cols-5 gap-1.5">
             {units.map((unit) => {
               const active = selectedUnit?.number === unit.number
               return (
-                <li key={unit.number}>
-                  <button
-                    type="button"
-                    onClick={() => onSelectUnit(active ? null : unit)}
-                    aria-pressed={active}
-                    className={`flex w-full cursor-pointer items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-left text-xs transition-colors ${
-                      active ? 'border-brand bg-brand/10' : 'border-border hover:border-white/30'
-                    }`}
-                  >
-                    <span className="flex flex-col leading-tight">
-                      <span className="text-[11px] text-muted-foreground">Floor {unit.floor}</span>
-                      <span className="font-bold whitespace-nowrap">{unit.number}</span>
-                    </span>
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-[10px] font-bold text-white ${STATUS_BG[unit.status]}`}
-                    >
-                      {STATUS_LABEL[unit.status]}
-                    </span>
-                  </button>
-                </li>
+                <button
+                  key={unit.number}
+                  type="button"
+                  onClick={() => onSelectUnit(active ? null : unit)}
+                  aria-pressed={active}
+                  aria-label={`Floor ${unit.floor}, ${unit.number}, ${STATUS_LABEL[unit.status]}`}
+                  title={`${unit.number}: ${STATUS_LABEL[unit.status]}`}
+                  className={`flex h-11 cursor-pointer flex-col items-center justify-center gap-1 rounded-md border text-sm font-bold tabular-nums transition-colors ${
+                    active ? 'border-brand bg-brand text-brand-foreground' : 'border-border hover:border-white/40'
+                  }`}
+                >
+                  {String(unit.floor).padStart(2, '0')}
+                  <span className={`h-1 w-4 rounded-full ${STATUS_BG[unit.status]}`} aria-hidden="true" />
+                </button>
               )
             })}
-          </ul>
-          <p className="mt-1.5 mb-4 text-[11px] text-muted-foreground">Tap a floor to ask about that flat.</p>
+          </div>
+          <div className="mt-2">
+            <StatusCounts counts={counts} />
+            <SampleInventoryNote project={project} className="mt-1.5" />
+          </div>
+          {selectedUnit ? (
+            <TowerFloor plot={plot} unit={selectedUnit} />
+          ) : (
+            <p className="mt-2 mb-4 text-[11px] text-muted-foreground">
+              Choose a floor to open this tower on that floor.
+            </p>
+          )}
         </>
       )}
 
-      {plot.plan && (
+      {plot.plan && !selectedUnit && (
         <>
           <FlatPlanCrop blockId={plot.plan.blockId} flatNo={plot.plan.flatNo} className="border border-border" />
           <p className="mt-1.5 text-[11px] text-muted-foreground">
             The flat on its block's typical floor plan, as printed in the brochure.
           </p>
-          <ExplorerLinks plan={plot.plan} unit={selectedUnit} />
         </>
       )}
 
@@ -306,31 +356,57 @@ export function FlatPanel({
   )
 }
 
-// Deep links into the IRA Towers site: the flat's floor plan and 3D view, and its virtual tour.
-// Unit numbers share the site's apartment IDs, so the chosen floor opens that exact apartment.
-function ExplorerLinks({ plan, unit }) {
-  const floor = unit?.floor ?? 1
-  const target = {
-    blockId: plan.blockId,
-    floor,
-    apartmentId: unit?.number ?? apartmentId(plan.blockId, floor, plan.flatNo),
-  }
-  const link =
-    'inline-flex items-center justify-center gap-1.5 rounded-full border border-border px-3 py-2 text-xs font-bold transition-colors hover:border-brand hover:text-brand'
+// The selected tower on its selected floor: that floor's plan (the tower's flat, which is the whole
+// of the tower on that floor), and its walkthrough and plan on the IRA Towers site. Unit numbers
+// share the site's apartment IDs, so tower A-01 on floor 4 opens apartment A-0401 there.
+function TowerFloor({ plot, unit }) {
+  const label = String(unit.floor).padStart(2, '0')
+  const apartment = plot.plan ? getApartment(unit.number) : undefined
+  const tour = apartment && getTourForApartment(apartment)
+  const target = apartment && { blockId: apartment.blockId, floor: apartment.level, apartmentId: apartment.id }
   return (
-    <div className="mt-3 grid grid-cols-2 gap-2">
-      <Link to={paths.explore(target)} className={link}>
-        <LayoutPanelTop size={14} /> Plan &amp; 3D
-      </Link>
-      <Link to={paths.tour(target)} className={link}>
-        <View size={14} /> Virtual tour
-      </Link>
-      {!unit && (
-        <p className="col-span-2 text-[11px] text-muted-foreground">
-          Opens floor 1. Pick a floor above to open that one.
-        </p>
+    <section aria-label={`Tower ${plot.number}, floor ${label}`} className="mt-4 mb-2">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <h3 className="text-base font-bold">
+          Floor {label} · {unit.number}
+        </h3>
+        <StatusPill status={unit.status} />
+      </div>
+      {plot.plan && (
+        <>
+          <FlatPlanCrop blockId={plot.plan.blockId} flatNo={plot.plan.flatNo} className="border border-border" />
+          <p className="mt-1.5 text-[11px] text-muted-foreground">
+            Floor plan of tower {plot.number} on floor {label}: {unit.number}, as printed on the brochure's typical
+            floor plan (the same on every floor).
+          </p>
+        </>
       )}
-    </div>
+      {tour ? (
+        <>
+          <Link
+            to={paths.tour(target)}
+            className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-full bg-brand px-5 py-3 text-sm font-bold text-brand-foreground hover:bg-brand-strong"
+          >
+            <View size={16} /> Walkthrough floor {label}
+          </Link>
+          <p className="mt-1.5 text-[11px] text-muted-foreground">
+            A 360° walk through {unit.number}. The interior is the sample {tour.bhk} BHK tour
+            {tour.media === 'placeholder' ? ', with placeholder images for now' : ''}: representative, not this flat's
+            final design.
+          </p>
+        </>
+      ) : (
+        <p className="mt-3 text-[11px] text-muted-foreground">No walkthrough is available for this floor yet.</p>
+      )}
+      {target && (
+        <Link
+          to={paths.explore(target)}
+          className="mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-full border border-border px-3 py-2 text-xs font-bold transition-colors hover:border-brand hover:text-brand"
+        >
+          <LayoutPanelTop size={14} /> Plan &amp; 3D on the IRA Towers site
+        </Link>
+      )}
+    </section>
   )
 }
 
@@ -350,6 +426,7 @@ export function AmenityPanel({ project, plot, onClose }) {
     >
       <div className="mb-3 flex items-start justify-between gap-3">
         <div>
+          <p className="text-[10px] font-bold tracking-[0.15em] text-brand uppercase">Amenity</p>
           <h2 className="text-xl font-bold">{plot.number}</h2>
           <p className="text-xs text-muted-foreground">
             {plot.zone} · {project.name}
