@@ -608,6 +608,7 @@ export const IRA_TOWERS_PLOTS = [
 // Outlines of the three blocks, for highlighting one and dimming the others.
 export const IRA_TOWERS_BLOCKS = [
   {
+    id: 'B', // the block's ID in the IRA Towers data and URLs
     name: 'Block B',
     floors: 10,
     polygon: [
@@ -619,6 +620,7 @@ export const IRA_TOWERS_BLOCKS = [
     ],
   },
   {
+    id: 'A', // the block's ID in the IRA Towers data and URLs
     name: 'Block A',
     floors: 10,
     polygon: [
@@ -630,6 +632,7 @@ export const IRA_TOWERS_BLOCKS = [
     ],
   },
   {
+    id: 'C', // the block's ID in the IRA Towers data and URLs
     name: 'Block C',
     floors: 10,
     polygon: [
