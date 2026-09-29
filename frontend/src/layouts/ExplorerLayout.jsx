@@ -23,7 +23,7 @@ export function ExplorerLayout() {
         <Wordmark className="pointer-events-auto" />
         <Button
           nativeButton={false}
-          render={<Link to={paths.home()} />}
+          render={<Link to={paths.viewer('ira-towers')} />}
           variant="secondary"
           size="lg"
           className="touch-target pointer-events-auto px-3"
