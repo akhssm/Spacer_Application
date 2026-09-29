@@ -10,12 +10,12 @@
  *   public/tours/{tourId}/{sceneKey}-4k.webp        equirectangular 360°, 2:1, 4096×2048
  *   public/tours/{tourId}/{sceneKey}-preview.webp   same, 512×256 (shown instantly while the 4K loads)
  *   public/tours/{tourId}/{sceneKey}-thumb.webp     room-strip thumbnail, 400×225
- * They are PLACEHOLDERS today (scripts/generate_tour_placeholders.py). Replacing the files with the
- * real renders needs no code change; afterwards set `media: "final"` to drop the placeholder badge.
+ * The generated panorama renders are served from these paths; the fixed-camera reference clips
+ * cited below describe the rooms but are not used as tour media.
  *
  * Angles are in degrees. yaw 0 = the centre of the panorama, positive to the right; pitch 0 = horizon.
  * `northOffset` is the yaw that faces "up" on the brochure floor plan (drives the minimap cone).
- * With placeholder media every angle below is a placeholder too — calibrate them on the real renders.
+ * Angles are calibrated for the generated panorama renders.
  */
 
 const view = (yaw = 0, pitch = 0, fov = 80) => ({ yaw, pitch, fov })
@@ -25,7 +25,7 @@ const TOURS = [
     id: 'sample-2bhk',
     bhk: 2,
     title: 'Sample 2 BHK interior',
-    media: 'placeholder',
+    media: 'final',
     notRecorded: 'Balcony and wash area (seen only through glazing, never recorded).',
     scenes: [
       {
@@ -33,11 +33,9 @@ const TOURS = [
         title: 'Living room',
         planRooms: ['living'],
         initialView: view(),
-        northOffset: 0,
-        links: [
-          { to: 'dining', yaw: 120, pitch: -8 },
-          { to: 'kitchen', yaw: 150, pitch: -8 },
-        ],
+        northOffset: 90,
+        intro: { pitch: 62, fov: 100, ms: 3500 },
+        links: [{ to: 'dining', yaw: -64, pitch: -12 }],
         reference: {
           clip: 'docs/2bhk/living room 2bhk.mp4',
           visible:
@@ -49,10 +47,12 @@ const TOURS = [
         title: 'Dining',
         planRooms: ['dining'],
         initialView: view(),
-        northOffset: 0,
+        northOffset: 142,
         links: [
-          { to: 'kitchen', yaw: 60, pitch: -8 },
-          { to: 'living', yaw: 200, pitch: -8 },
+          { to: 'kitchen', yaw: -150, pitch: -10 },
+          { to: 'living', yaw: 125, pitch: -10 },
+          { to: 'master-bedroom', yaw: 54, pitch: -6 },
+          { to: 'bedroom-2', yaw: 66, pitch: -6 },
         ],
         reference: {
           clip: 'docs/2bhk/dining area 2bhk.mp4',
@@ -65,8 +65,8 @@ const TOURS = [
         title: 'Kitchen',
         planRooms: ['kitchen'],
         initialView: view(),
-        northOffset: 0,
-        links: [{ to: 'dining', yaw: 160, pitch: -8 }],
+        northOffset: -90,
+        links: [{ to: 'dining', yaw: 150, pitch: -10 }],
         reference: {
           clip: 'docs/2bhk/Kitchen 2bhk.mp4',
           visible:
@@ -78,8 +78,11 @@ const TOURS = [
         title: 'Master bedroom',
         planRooms: ['master-bedroom'],
         initialView: view(),
-        northOffset: 0,
-        links: [],
+        northOffset: 180,
+        links: [
+          { to: 'toilet-1', yaw: -56, pitch: -8 },
+          { to: 'dining', yaw: -100, pitch: -8 },
+        ],
         reference: {
           clip: 'docs/2bhk/master bedroom 2bhk.mp4',
           visible: 'Upholstered double bed, glass-fronted wardrobe, dressing table, entrance door, full-height window.',
@@ -90,8 +93,11 @@ const TOURS = [
         title: 'Bedroom 2',
         planRooms: ['bedroom-2'],
         initialView: view(),
-        northOffset: 0,
-        links: [],
+        northOffset: 180,
+        links: [
+          { to: 'toilet-2', yaw: -85, pitch: -8 },
+          { to: 'dining', yaw: -34, pitch: -8 },
+        ],
         reference: {
           clip: 'docs/2bhk/bedroom 2bhk.mp4',
           visible:
@@ -104,7 +110,7 @@ const TOURS = [
         planRooms: ['toilet-1'],
         initialView: view(),
         northOffset: 0,
-        links: [],
+        links: [{ to: 'master-bedroom', yaw: -78, pitch: -8 }],
         reference: {
           clip: 'docs/2bhk/bathroom 2bhk.mp4',
           visible:
@@ -116,8 +122,8 @@ const TOURS = [
         title: 'Toilet 2',
         planRooms: ['toilet-2'],
         initialView: view(),
-        northOffset: 0,
-        links: [],
+        northOffset: 180,
+        links: [{ to: 'bedroom-2', yaw: 80, pitch: -8 }],
         reference: {
           clip: 'docs/2bhk/bathroom2bhk.mp4',
           visible:
@@ -130,7 +136,7 @@ const TOURS = [
     id: 'sample-3bhk',
     bhk: 3,
     title: 'Sample 3 BHK interior',
-    media: 'placeholder',
+    media: 'final',
     notRecorded: 'A separate dining room, drawing room, second and third toilets, dress, powder room and wash area.',
     scenes: [
       {
@@ -140,9 +146,10 @@ const TOURS = [
         planRooms: ['living-dining', 'living', 'drawing'],
         initialView: view(),
         northOffset: 0,
+        intro: { pitch: 62, fov: 100, ms: 3500 },
         links: [
-          { to: 'kitchen', yaw: 70, pitch: -8 },
-          { to: 'balcony', yaw: 110, pitch: -8 },
+          { to: 'kitchen', yaw: 105, pitch: -8 },
+          { to: 'balcony', yaw: -91, pitch: -8 },
         ],
         reference: {
           clip: 'docs/3bhk/living room.mp4',
@@ -155,8 +162,8 @@ const TOURS = [
         title: 'Kitchen',
         planRooms: ['kitchen'],
         initialView: view(),
-        northOffset: 0,
-        links: [{ to: 'living', yaw: 170, pitch: -8 }],
+        northOffset: -90,
+        links: [{ to: 'living', yaw: -165, pitch: -8 }],
         reference: {
           clip: 'docs/3bhk/Kitchen.mp4',
           visible:
@@ -168,7 +175,7 @@ const TOURS = [
         title: 'Master bedroom',
         planRooms: ['master-bedroom'],
         initialView: view(),
-        northOffset: 0,
+        northOffset: 180,
         links: [],
         reference: {
           clip: 'docs/3bhk/Master bedroom.mp4',
@@ -181,7 +188,7 @@ const TOURS = [
         title: 'Bedroom 2',
         planRooms: ['bedroom-2'],
         initialView: view(),
-        northOffset: 0,
+        northOffset: 180,
         links: [],
         reference: {
           clip: 'docs/3bhk/bedroom2.mp4',
@@ -194,7 +201,7 @@ const TOURS = [
         title: 'Bedroom 3',
         planRooms: ['bedroom-3'],
         initialView: view(),
-        northOffset: 0,
+        northOffset: -90,
         links: [],
         reference: {
           clip: 'docs/3bhk/bedroom3.mp4',
@@ -220,8 +227,8 @@ const TOURS = [
         title: 'Balcony',
         planRooms: ['balcony', 'balcony-1', 'wash-balcony'],
         initialView: view(),
-        northOffset: 0,
-        links: [{ to: 'living', yaw: 180, pitch: -8 }],
+        northOffset: 90,
+        links: [{ to: 'living', yaw: -124, pitch: -12 }],
         reference: {
           clip: 'docs/3bhk/balcony_360.mp4',
           visible:

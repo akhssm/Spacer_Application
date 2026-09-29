@@ -88,7 +88,16 @@ describe('resolveTour', () => {
 describe('sample tours', () => {
   it('has exactly one sample tour per BHK type, both clearly marked', () => {
     expect(tours.map((t) => t.bhk).sort()).toEqual([2, 3])
-    for (const t of tours) expect(t.media).toBe('placeholder')
+    for (const t of tours) expect(t.media).toBe('final')
+  })
+
+  it('selects the tour from each apartment BHK, even within the same block', () => {
+    const blockA = blocks.find((block) => block.id === 'A')
+    const twoBhk = blockA.stacks.find((stack) => stack.flatNo === 2)
+    const threeBhk = blockA.stacks.find((stack) => stack.flatNo === 1)
+
+    expect(getTourForApartment(twoBhk).id).toBe('sample-2bhk')
+    expect(getTourForApartment(threeBhk).id).toBe('sample-3bhk')
   })
 
   it('has unique scene keys and links only to its own scenes', () => {
