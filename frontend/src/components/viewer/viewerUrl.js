@@ -1,5 +1,5 @@
 /**
- * The viewer's selection in the URL: /p/ira-towers?block=A&tower=A-01&floor=4.
+ * The viewer's selection in the URL: /ira-towers?block=A&tower=A-01&floor=4.
  *   block  the block filter (Block A); written by the block's `id` when it has one, else its name
  *   tower  one tower of that block, by its plot number ("A-01": one flat stack, its own building)
  *   floor  a floor of THAT tower — a floor never exists without its tower

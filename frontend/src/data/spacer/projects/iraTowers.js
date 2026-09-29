@@ -1,4 +1,4 @@
-// IRA Towers as a Spacer project: the viewer at /p/ira-towers.
+// IRA Towers as a Spacer project: the viewer, served as the project home at /ira-towers.
 //
 // Geometry is Spacer's satellite tracing (iraTowersGeometry.js). Everything a buyer reads about a
 // flat — BHK, facing, area, rooms and its plan — comes from the brochure data layer in src/data, the
