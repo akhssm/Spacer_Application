@@ -8,7 +8,10 @@ describe('Spacer projects service', () => {
     const cards = listProjects()
     expect(cards.map((c) => c.shortCode)).toEqual(['ira-towers', 'demo'])
     expect(cards.find((c) => c.shortCode === 'demo').unitCount).toBe(24)
-    expect(cards.find((c) => c.shortCode === 'ira-towers')).toMatchObject({ unitCount: 36, website: '/ira-towers' })
+    expect(cards.find((c) => c.shortCode === 'ira-towers')).toMatchObject({
+      unitCount: 36,
+      website: '/ira-towers/story',
+    })
   })
 
   it('finds a project by code, case-insensitively, and nothing for an unknown code', () => {

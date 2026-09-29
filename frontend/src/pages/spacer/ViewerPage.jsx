@@ -43,8 +43,13 @@ function Toggle({ label, on, onChange }) {
 
 // The public project page: /p/:shortCode. The key makes React start the page
 // fresh (no stale selection or panels) when the code in the URL changes.
-export default function ViewerPage() {
-  const { shortCode } = useParams()
+export default function ViewerPage({ shortCode: fixedCode }) {
+  // /p/:shortCode reads the code from the URL; IRA Towers' own /ira-towers route passes it in
+  const { shortCode = fixedCode } = useParams()
+  const { search, hash } = useLocation()
+  // A project served at its own URL (/p/ira-towers → /ira-towers) keeps any ?block=&tower=&floor=
+  const home = paths.viewer(shortCode)
+  if (!fixedCode && !home.startsWith('/p/')) return <Navigate to={{ pathname: home, search, hash }} replace />
   const project = getProject(shortCode)
   if (!project) return <ProjectNotFound shortCode={shortCode} />
   return <ProjectViewer key={project.shortCode} project={project} />

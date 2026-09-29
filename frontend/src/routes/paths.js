@@ -2,6 +2,10 @@ const pad2 = (n) => String(n).padStart(2, '0')
 
 /** The IRA Towers project site is mounted under this prefix; the Spacer platform owns "/". */
 export const IRA_BASE = '/ira-towers'
+/** The Spacer short code of IRA Towers, whose viewer is served at IRA_BASE itself. */
+export const IRA_SHORT_CODE = 'ira-towers'
+/** The brochure story page (chapters, amenities, location): IRA_BASE itself is the viewer. */
+export const IRA_STORY = `${IRA_BASE}/story`
 
 export const EXPLORE_VIEWS = ['site', 'plan', '3d']
 
@@ -12,11 +16,14 @@ export const defaultExploreView = (floor) => (floor === undefined ? 'site' : 'pl
 export const paths = {
   /** Spacer platform landing page. */
   spacerHome: () => '/',
-  /** Spacer project viewer, e.g. /p/demo. */
-  viewer: (shortCode) => `/p/${encodeURIComponent(shortCode)}`,
+  /**
+   * Spacer project viewer, e.g. /p/demo. IRA Towers' viewer is the project's own home page, at
+   * /ira-towers (the old /p/ira-towers redirects there).
+   */
+  viewer: (shortCode) => (shortCode === IRA_SHORT_CODE ? IRA_BASE : `/p/${encodeURIComponent(shortCode)}`),
 
-  /** IRA Towers project site. `section` is an in-page anchor such as "clubhouse". */
-  home: (section) => (section ? `${IRA_BASE}#${section}` : IRA_BASE),
+  /** IRA Towers brochure story page. `section` is an in-page anchor such as "clubhouse". */
+  home: (section) => (section ? `${IRA_STORY}#${section}` : IRA_STORY),
   apartments: () => `${IRA_BASE}/apartments`,
   /** Satellite location map, optionally with its ?block=&flat=&floor= selection query. */
   map: (search = '') => `${IRA_BASE}/explore/map${search}`,
