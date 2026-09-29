@@ -611,14 +611,21 @@ export function InfoPanel({ project, onClose }) {
       <p className="mt-1 text-muted-foreground">
         {project.layout.plots.length} {project.unitLabel.toLowerCase()}s · {project.zones.join(', ')}
       </p>
-      <a
-        href={directionsUrl(project.location)}
-        target="_blank"
-        rel="noreferrer"
-        className="mt-4 inline-flex items-center gap-1.5 text-brand hover:underline"
-      >
-        Open in Google Maps <ExternalLink size={14} />
-      </a>
+      <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2">
+        <a
+          href={directionsUrl(project.location)}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-1.5 text-brand hover:underline"
+        >
+          Open in Google Maps <ExternalLink size={14} />
+        </a>
+        {project.website && (
+          <Link to={project.website} className="inline-flex items-center gap-1.5 text-brand hover:underline">
+            Project website <ExternalLink size={14} />
+          </Link>
+        )}
+      </div>
     </Panel>
   )
 }

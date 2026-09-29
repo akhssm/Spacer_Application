@@ -299,14 +299,6 @@ function ProjectViewer({ project }) {
           </Link>
           <span aria-hidden="true">·</span>
           {project.city}
-          {project.website && (
-            <>
-              <span aria-hidden="true">·</span>
-              <Link to={project.website} className="underline underline-offset-2 hover:text-brand">
-                Project website
-              </Link>
-            </>
-          )}
           {project.layout.sample && (
             <span className="rounded bg-status-hold/80 px-1.5 text-[10px] font-bold text-black uppercase">
               Sample layout
