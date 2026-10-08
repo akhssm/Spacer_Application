@@ -1,8 +1,9 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router'
-import { ArrowLeft, BookOpen, Image, Info, LocateFixed, MessageCircle, Navigation, Search } from 'lucide-react'
+import { ArrowLeft, BookOpen, Filter, Image, Info, LocateFixed, MessageCircle, Navigation, Search } from 'lucide-react'
 import { COMPARE_LIMIT, ComparePanel, CompareTray } from '@/components/viewer/ComparePanel'
 import MapView from '@/components/viewer/MapView'
+import { EMPTY_QUERY, isQueryEmpty, runQuery } from '@/components/viewer/plotQuery'
 import {
   AmenityPanel,
   BlockChips,
@@ -10,6 +11,7 @@ import {
   FlatPanel,
   InfoPanel,
   PlotCard,
+  QueryPanel,
   SearchPanel,
 } from '@/components/viewer/Panels'
 import { SITE, getContactLink } from '@/data/spacer/siteContent'
@@ -17,7 +19,7 @@ import { useDocumentTitle } from '@/hooks/useDocumentTitle'
 import { paths } from '@/routes/paths'
 import { getProject } from '@/services/projects'
 import { directionsUrl } from '@/utils/geo'
-import { STATUS_BG, countByStatus, towerStatus, unitsByTower } from '@/utils/inventory'
+import { STATUS_BG, STATUS_LABEL, STATUS_ORDER, countByStatus, towerStatus, unitsByTower } from '@/utils/inventory'
 
 // The brochure flipbook and the gallery (and their images) load only once a visitor opens them
 const BrochureFlipbook = lazy(() => import('@/components/brochure/BrochureFlipbook'))
@@ -25,6 +27,10 @@ const GalleryViewer = lazy(() => import('@/components/gallery/GalleryViewer'))
 
 const PILL =
   'inline-flex items-center justify-center gap-2 rounded-full bg-card/90 px-3 py-3 text-sm font-semibold backdrop-blur transition-colors sm:px-5'
+
+// Square icon buttons, the same as the map tools on the left; the name shows on hover
+const TOOL_BUTTON =
+  'inline-flex h-12 w-14 flex-col items-center justify-center gap-0.5 rounded-lg bg-card/90 text-[10px] leading-none font-semibold text-white backdrop-blur transition-colors'
 
 const NO_BLOCKS = [] // shared empty lists, so they never count as a change
 const NO_UNITS = []
@@ -37,6 +43,44 @@ function Toggle({ label, on, onChange }) {
       <input type="checkbox" checked={on} onChange={onChange} className="peer sr-only" />
       <span className="relative h-6 w-11 rounded-full bg-white/20 transition-colors peer-checked:bg-brand after:absolute after:top-0.5 after:left-0.5 after:size-5 after:rounded-full after:bg-white after:transition-transform peer-checked:after:translate-x-5" />
     </label>
+  )
+}
+
+// Flats by status at a glance, as a plot map's availability board shows plots: the total, then
+// each status with its colour, one under another. Counts follow the chosen block.
+function StatusSummary({ scope, counts, total, unitLabel, sample }) {
+  const unit = `${unitLabel}s`
+  const rows = [
+    { key: 'total', label: `Total ${unit}`, count: total, swatch: 'bg-white/80' },
+    ...STATUS_ORDER.map((status) => ({
+      key: status,
+      label: `${status === 'sold' ? 'Booked' : STATUS_LABEL[status]} ${unit}`,
+      count: counts[status],
+      swatch: STATUS_BG[status],
+    })),
+  ]
+  return (
+    <section
+      aria-label={`${unit} by status`}
+      className="rounded-xl border border-white/10 bg-black/75 p-3.5 text-sm shadow-lg backdrop-blur"
+    >
+      <h2 className="mb-2.5 text-xs font-bold tracking-wider text-white/70 uppercase">
+        {scope}
+        {sample && <span className="ml-1.5 text-status-hold">· Sample</span>}
+      </h2>
+      <dl className="flex flex-col gap-2">
+        {rows.map(({ key, label, count, swatch }) => (
+          <div key={key} className="flex items-center justify-between gap-6">
+            <dt className="flex items-center gap-2.5 font-semibold whitespace-nowrap">
+              <span className={`size-4 rounded ${swatch}`} aria-hidden="true" /> {label}
+            </dt>
+            <dd className="min-w-10 rounded-md bg-white/10 px-2 py-0.5 text-center text-base font-bold tabular-nums">
+              {count}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </section>
   )
 }
 
@@ -63,7 +107,8 @@ function ProjectNotFound({ shortCode }) {
 }
 
 function ProjectViewer({ project }) {
-  const [openPanel, setOpenPanel] = useState(null) // 'brochure' | 'search' | 'info' | null
+  const [openPanel, setOpenPanel] = useState(null) // 'brochure' | 'search' | 'query' | 'info' | null
+  const [query, setQuery] = useState(EMPTY_QUERY) // the Query tool's filters, kept while it is closed
   const [colorMode, setColorMode] = useState('plain') // 'plain' | 'zones' | 'status'
   const [selectedPlot, setSelectedPlot] = useState(null)
   const [selectedBlock, setSelectedBlock] = useState(null) // a block name, or null for all
@@ -112,6 +157,15 @@ function ProjectViewer({ project }) {
       },
     }
   }, [project, units, towerUnits])
+
+  // While the Query tool is open, the flats it picked stay bright and the rest fade back
+  const highlight = useMemo(
+    () =>
+      openPanel === 'query' && !isQueryEmpty(query)
+        ? new Set(runQuery(mapProject.layout.plots, query).map((plot) => plot.number))
+        : null,
+    [openPanel, query, mapProject],
+  )
 
   // Choosing a flat also chooses its block, so the other blocks fade back
   const selectPlot = useCallback(
@@ -217,10 +271,18 @@ function ProjectViewer({ project }) {
   const tools = [
     { icon: Image, label: 'Gallery', onClick: gallery.length ? () => setOpenPanel('gallery') : null },
     { icon: Search, label: 'Search', onClick: () => setOpenPanel('search') },
+    { icon: Filter, label: 'Query', onClick: () => setOpenPanel('query') },
     { icon: LocateFixed, label: 'GPS', onClick: toggleGps, active: gpsOn },
     { icon: BookOpen, label: 'Brochure', onClick: hasBrochure ? () => setOpenPanel('brochure') : null },
     { icon: Info, label: 'Info', onClick: () => setOpenPanel('info') },
     { icon: Navigation, label: 'Locate', href: directionsUrl(project.location) },
+    {
+      icon: MessageCircle,
+      label: 'WhatsApp',
+      title: 'Enquire on WhatsApp',
+      href: whatsappLink,
+      iconClass: 'text-[#25d366]',
+    },
   ]
 
   return (
@@ -230,6 +292,7 @@ function ProjectViewer({ project }) {
         colorMode={colorMode}
         selectedPlot={selectedPlot}
         selectedBlock={selectedBlock}
+        highlight={highlight}
         onSelectPlot={selectPlot}
         onSelectBlock={selectBlock}
         userPosition={userPosition}
@@ -267,29 +330,23 @@ function ProjectViewer({ project }) {
         </p>
       </header>
 
-      {colorMode === 'status' && (
-        <ul
-          className={`absolute flex flex-col gap-1 rounded-lg bg-black/60 p-2 text-xs backdrop-blur transition-[right,top] ${
-            // With a panel open it slides left, and on desktop drops under the block chips
-            sidePanelOpen ? 'top-5 right-5 md:top-16 md:right-104' : 'top-5 right-5'
-          }`}
-        >
-          <li className="mb-1 text-[10px] font-bold tracking-wider text-muted-foreground uppercase">
-            {legendScope} · {legendTotal} {project.unitLabel.toLowerCase()}s
-          </li>
-          {Object.entries(STATUS_BG).map(([status, swatch]) => (
-            <li key={status} className="flex items-center justify-between gap-4 capitalize">
-              <span className="flex items-center gap-2">
-                <span className={`size-3 rounded-sm ${swatch}`} /> {status}
-              </span>
-              <span className="font-bold tabular-nums">{legendCounts[status]}</span>
-            </li>
-          ))}
-          {project.inventory === 'sample' && (
-            <li className="mt-1 max-w-40 text-[10px] leading-tight text-muted-foreground">Sample data for this demo</li>
-          )}
-        </ul>
-      )}
+      {/* Flats by status down the right. With a panel open it slides left, and on desktop drops
+          under the block chips. */}
+      <div
+        className={`absolute flex w-max flex-col items-stretch gap-2 transition-[right,top] ${
+          sidePanelOpen ? 'top-5 right-5 md:top-16 md:right-104' : 'top-5 right-5'
+        }`}
+      >
+        {legendTotal > 0 && (
+          <StatusSummary
+            scope={legendScope}
+            counts={legendCounts}
+            total={legendTotal}
+            unitLabel={project.unitLabel}
+            sample={project.inventory === 'sample'}
+          />
+        )}
+      </div>
 
       <div
         className={`absolute bottom-5 left-5 flex flex-col items-stretch gap-2 transition-[right] md:left-auto md:items-end ${
@@ -307,22 +364,21 @@ function ProjectViewer({ project }) {
             on={colorMode === 'status'}
             onChange={() => setColorMode(colorMode === 'status' ? 'plain' : 'status')}
           />
-          <a href={whatsappLink} target="_blank" rel="noreferrer" className={`${PILL} hover:bg-border`}>
-            <MessageCircle size={18} className="text-[#25d366]" />
-            <span className="text-left leading-tight">
-              WhatsApp
-              <span className="block text-[11px] font-normal text-muted-foreground">Inquire project</span>
-            </span>
-          </a>
         </div>
 
-        <nav aria-label="Project tools" className="grid grid-cols-3 gap-2">
-          {tools.map(({ icon: Icon, label, onClick, href, active }) => {
+        <nav aria-label="Project tools" className="flex flex-wrap justify-end gap-1.5">
+          {tools.map(({ icon: Icon, label, title = label, onClick, href, active, iconClass = '' }) => {
             const enabled = Boolean(onClick || href)
-            const className = `${PILL} ${enabled ? 'cursor-pointer hover:bg-border' : 'cursor-not-allowed opacity-40'} ${active ? 'text-brand' : ''}`
+            const className = `${TOOL_BUTTON} ${enabled ? 'cursor-pointer hover:bg-border' : 'cursor-not-allowed opacity-40'} ${active ? 'text-brand' : ''}`
+            const icon = (
+              <>
+                <Icon size={17} className={iconClass} />
+                {label}
+              </>
+            )
             return href ? (
-              <a key={label} href={href} target="_blank" rel="noreferrer" className={className}>
-                <Icon size={16} className="shrink-0" /> {label}
+              <a key={label} href={href} target="_blank" rel="noreferrer" title={title} className={className}>
+                {icon}
               </a>
             ) : (
               <button
@@ -330,11 +386,11 @@ function ProjectViewer({ project }) {
                 type="button"
                 onClick={onClick ?? undefined}
                 disabled={!enabled}
-                title={enabled ? label : 'Coming soon'}
+                title={enabled ? title : `${title}: coming soon`}
                 aria-pressed={active}
                 className={className}
               >
-                <Icon size={16} className="shrink-0" /> {label}
+                {icon}
               </button>
             )
           })}
@@ -348,6 +404,7 @@ function ProjectViewer({ project }) {
             project={project}
             plot={selectedPlot}
             units={towerUnits[selectedPlot.number] ?? NO_UNITS}
+            blockUnits={units.filter((unit) => unit.block === selectedPlot.zone)}
             selectedUnit={selectedUnit}
             onSelectUnit={setSelectedUnit}
             showStatus={colorMode === 'status'}
@@ -380,6 +437,16 @@ function ProjectViewer({ project }) {
       )}
       {openPanel === 'search' && (
         <SearchPanel project={project} onSelect={selectPlot} onClose={() => setOpenPanel(null)} />
+      )}
+      {openPanel === 'query' && (
+        <QueryPanel
+          project={project}
+          plots={mapProject.layout.plots}
+          query={query}
+          onChange={setQuery}
+          onSelect={selectPlot}
+          onClose={() => setOpenPanel(null)}
+        />
       )}
       {openPanel === 'info' && <InfoPanel project={project} onClose={() => setOpenPanel(null)} />}
       {openPanel !== 'compare' && (

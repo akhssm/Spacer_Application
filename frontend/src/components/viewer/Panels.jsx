@@ -1,6 +1,16 @@
 import { useState } from 'react'
 import { Link } from 'react-router'
-import { Columns3, Compass, ExternalLink, LayoutPanelTop, MessageCircle, Search, View, X } from 'lucide-react'
+import {
+  ChevronDown,
+  Columns3,
+  ExternalLink,
+  LayoutPanelTop,
+  MessageCircle,
+  Navigation,
+  Search,
+  View,
+  X,
+} from 'lucide-react'
 import { SQ_FT_PER_SQ_M, areaSqMetres, directionsUrl, formatArea } from '@/utils/geo'
 import { STATUS_BG, STATUS_LABEL, STATUS_ORDER, countByStatus } from '@/utils/inventory'
 import GalleryViewer from '@/components/gallery/GalleryViewer'
@@ -8,6 +18,7 @@ import { BrochureImage } from '@/components/media/BrochureImage'
 import { FlatPlanCrop } from '@/components/explore/FlatPlan'
 import { apartmentId } from '@/data'
 import { paths } from '@/routes/paths'
+import { EMPTY_QUERY, isQueryEmpty, queryOptions, runQuery } from '@/components/viewer/plotQuery'
 
 const SIDE_PANEL =
   'absolute inset-x-3 bottom-3 z-20 max-h-[75svh] overflow-y-auto rounded-xl border border-border bg-panel/95 p-5 text-sm backdrop-blur md:inset-x-auto md:top-20 md:right-5 md:bottom-5 md:max-h-none md:w-96'
@@ -49,6 +60,9 @@ export function BlockPanel({ project, block, units, onSelectUnit, onClose }) {
   const byKey = new Map(units.map((unit) => [`${unit.tower}/${unit.floor}`, unit]))
   const floorCounts = (floor) => countByStatus(units.filter((unit) => unit.floor === floor))
   const towerCounts = (tower) => countByStatus(units.filter((unit) => unit.tower === tower))
+  // The block at a glance: its land, its apartments, and the flat types and facings it has
+  const blockPolygon = project.layout.blocks?.find((b) => b.name === block)?.polygon
+  const facings = [...new Set(towers.map((tower) => tower.facing).filter(Boolean))].sort()
 
   return (
     <aside aria-label={`${block} inventory`} className={SIDE_PANEL}>
@@ -56,7 +70,7 @@ export function BlockPanel({ project, block, units, onSelectUnit, onClose }) {
         <div>
           <h2 className="text-xl font-bold">{block}</h2>
           <p className="text-xs text-muted-foreground">
-            {towers.length} towers · {floors.length} floors · {units.length} {project.unitLabel.toLowerCase()}s
+            {towers.length} apartments · {floors.length} floors · {units.length} {project.unitLabel.toLowerCase()}s
           </p>
         </div>
         <button
@@ -68,6 +82,20 @@ export function BlockPanel({ project, block, units, onSelectUnit, onClose }) {
           <X size={20} />
         </button>
       </div>
+
+      <table className="mb-4 w-full overflow-hidden rounded-lg border border-border text-sm">
+        <tbody>
+          <InfoRow label="Block">{block}</InfoRow>
+          <InfoRow label="Total apartments">{towers.length}</InfoRow>
+          {blockPolygon && (
+            <InfoRow label="Block total area">
+              <LandArea sqMetres={areaSqMetres(blockPolygon)} />
+            </InfoRow>
+          )}
+          {bhkMix(towers) && <InfoRow label="Block type">{bhkMix(towers)}</InfoRow>}
+          {facings.length > 0 && <InfoRow label="Block facing">{facings.join(' & ')}</InfoRow>}
+        </tbody>
+      </table>
 
       <StatusCounts counts={countByStatus(units)} />
       <SampleInventoryNote project={project} className="mt-2" />
@@ -138,7 +166,9 @@ const CHIP =
 
 // "All blocks / Block A / Block B / Block C" switcher
 export function BlockChips({ blocks, selected, onSelect }) {
-  const options = [{ name: null, label: 'All blocks' }, ...blocks.map((b) => ({ name: b.name, label: b.name }))]
+  // In name order, whatever order the project lists its blocks in
+  const names = blocks.map((b) => b.name).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+  const options = [{ name: null, label: 'All blocks' }, ...names.map((name) => ({ name, label: name }))]
   return (
     <div role="group" aria-label="Choose a block" className="flex flex-wrap gap-1.5">
       {options.map(({ name, label }) => {
@@ -163,12 +193,26 @@ export function BlockChips({ blocks, selected, onSelect }) {
   )
 }
 
-// Everything about one flat position: type, facing, area, its floor plan, every
-// room's size, and the status of that flat on every floor
+// One row of the apartment's facts table: the name in bold, the value beside it
+function InfoRow({ label, children }) {
+  return (
+    <tr className="odd:bg-white/[0.06]">
+      <th scope="row" className="w-1/2 px-3 py-2 text-left text-xs font-bold text-white/70">
+        {label}
+      </th>
+      <td className="px-3 py-2 font-bold">{children}</td>
+    </tr>
+  )
+}
+
+// One flat position, apartment by apartment: every floor's apartment with its number, floor,
+// status, type, area and facing (and the buyer's name, when the inventory carries one), as a plot
+// map's feature info shows a plot. The floor plan and room sizes open underneath.
 export function FlatPanel({
   project,
   plot,
   units = [],
+  blockUnits = units, // every unit in the flat's block: the apartment building it stands in
   selectedUnit,
   onSelectUnit,
   showStatus,
@@ -181,12 +225,22 @@ export function FlatPanel({
   const chosen = selectedUnit ? ` (${selectedUnit.number}, floor ${selectedUnit.floor})` : ''
   const message = `Hi, I am interested in ${title}${chosen} at ${project.name}: ${plot.bhk}, ${plot.facing} facing, ${area.sqft}.`
   const counts = units.length ? countByStatus(units) : null
+  // The land the apartment stands on: its square on the layout
+  const landSqM = areaSqMetres(plot.polygon)
+  const details = [plot.bhk, `${plot.facing} facing`, area.sqft].filter(Boolean).join(' · ')
+  // The apartment building (the block) at a glance: its floors, its flats per floor and in all,
+  // and the flat types it has
+  const floors = new Set(blockUnits.map((unit) => unit.floor)).size
+  const flatsPerFloor = floors ? Math.max(...countPerFloor(blockUnits)) : 0
+  const blockPlots = project.layout.plots.filter((p) => p.kind !== 'amenity' && p.zone === plot.zone)
+  const blockTypes = bhkMix(blockPlots)
 
   return (
     <aside aria-label={title} className={SIDE_PANEL}>
-      <div className="mb-3 flex items-start justify-between gap-3">
+      <div className="mb-3 flex items-start justify-between gap-3 border-b border-border pb-3">
         <div>
-          <h2 className="text-xl font-bold">{title}</h2>
+          <p className="text-[11px] font-bold tracking-[0.15em] text-muted-foreground uppercase">Apartment info</p>
+          <h2 className="text-xl font-bold">Apartment {plot.number}</h2>
           <p className="text-xs text-muted-foreground">
             {plot.zone} · {project.name}
           </p>
@@ -201,23 +255,31 @@ export function FlatPanel({
         </button>
       </div>
 
-      <div className="mb-4 flex flex-wrap gap-1.5">
-        <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-bold">{plot.bhk}</span>
-        <span className="inline-flex items-center gap-1 rounded-full bg-white/10 px-3 py-1 text-xs font-bold">
-          <Compass size={12} /> {plot.facing} facing
-        </span>
-        <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-bold">{area.sqft}</span>
-        {showStatus && !counts && <StatusPill status={plot.status} />}
-      </div>
+      <table className="mb-4 w-full overflow-hidden rounded-lg border border-border text-sm">
+        <tbody>
+          <InfoRow label="Block">{plot.zone}</InfoRow>
+          <InfoRow label="Apartment No">{plot.number.split('-').pop()}</InfoRow>
+          {floors > 0 && (
+            <>
+              <InfoRow label="Floors">{floors}</InfoRow>
+              <InfoRow label="Flats per floor">{flatsPerFloor}</InfoRow>
+              <InfoRow label="Total flats">{blockUnits.length}</InfoRow>
+            </>
+          )}
+          <InfoRow label="Type">{blockTypes || plot.bhk}</InfoRow>
+          <InfoRow label="Facing">{plot.facing}</InfoRow>
+          <InfoRow label="Apartment land">
+            <LandArea sqMetres={landSqM} />
+          </InfoRow>
+        </tbody>
+      </table>
 
-      {counts && (
+      {counts ? (
         <>
-          <h3 className="mb-2 text-xs font-bold tracking-[0.15em] text-muted-foreground uppercase">
-            Availability by floor
-          </h3>
+          <h3 className="mb-2 text-xs font-bold tracking-[0.15em] text-muted-foreground uppercase">Flats by floor</h3>
           <StatusCounts counts={counts} />
           <SampleInventoryNote project={project} className="mt-1.5" />
-          <ul className="mt-2 grid grid-cols-2 gap-1">
+          <ul className="mt-3 flex flex-col gap-1.5">
             {units.map((unit) => {
               const active = selectedUnit?.number === unit.number
               return (
@@ -226,67 +288,53 @@ export function FlatPanel({
                     type="button"
                     onClick={() => onSelectUnit(active ? null : unit)}
                     aria-pressed={active}
-                    className={`flex w-full cursor-pointer items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-left text-xs transition-colors ${
-                      active ? 'border-brand bg-brand/10' : 'border-border hover:border-white/30'
+                    className={`w-full cursor-pointer rounded-lg border px-3 py-2 text-left transition-colors ${
+                      active ? 'border-brand bg-brand/10' : 'border-border bg-white/[0.03] hover:border-white/30'
                     }`}
                   >
-                    <span className="flex flex-col leading-tight">
-                      <span className="text-[11px] text-muted-foreground">Floor {unit.floor}</span>
-                      <span className="font-bold whitespace-nowrap">{unit.number}</span>
+                    <span className="flex items-center justify-between gap-2">
+                      <span className="font-bold">
+                        {unit.number}
+                        <span className="ml-2 text-xs font-normal text-muted-foreground">Floor {unit.floor}</span>
+                      </span>
+                      <StatusPill status={unit.status} />
                     </span>
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-[10px] font-bold text-white ${STATUS_BG[unit.status]}`}
-                    >
-                      {STATUS_LABEL[unit.status]}
-                    </span>
+                    <span className="mt-0.5 block text-xs text-white/75">{details}</span>
+                    {unit.customer && (
+                      <span className="mt-0.5 block text-xs text-muted-foreground">Customer: {unit.customer}</span>
+                    )}
                   </button>
                 </li>
               )
             })}
           </ul>
-          <p className="mt-1.5 mb-4 text-[11px] text-muted-foreground">Tap a floor to ask about that flat.</p>
+          <p className="mt-1.5 text-[11px] text-muted-foreground">Tap an apartment to enquire about it.</p>
         </>
+      ) : (
+        <p className="flex flex-wrap items-center gap-2 text-sm">
+          {details}
+          {showStatus && plot.status && <StatusPill status={plot.status} />}
+        </p>
       )}
 
-      {plot.plan && (
-        <>
-          <FlatPlanCrop blockId={plot.plan.blockId} flatNo={plot.plan.flatNo} className="border border-border" />
-          <p className="mt-1.5 text-[11px] text-muted-foreground">
-            The flat on its block's typical floor plan, as printed in the brochure.
-          </p>
-          <ExplorerLinks plan={plot.plan} unit={selectedUnit} />
-        </>
-      )}
-
-      <h3 className="mt-5 mb-2 text-xs font-bold tracking-[0.15em] text-muted-foreground uppercase">Rooms</h3>
-      <table className="w-full">
-        <tbody>
-          {plot.rooms.map((roomItem, index) => (
-            <tr key={index} className="border-t border-border">
-              <td className="py-1.5 pr-3 text-white/85">{roomItem.name}</td>
-              <td className="py-1.5 text-right font-semibold tabular-nums">{roomItem.size}</td>
-            </tr>
-          ))}
-          <tr className="border-t border-border">
-            <td className="py-1.5 pr-3 text-white/85">Total area</td>
-            <td className="py-1.5 text-right font-semibold">
-              {area.sqft}
-              <span className="block text-xs font-normal text-muted-foreground">
-                {area.sqyd} · {area.sqm}
-              </span>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-
-      <a
-        href={enquiryLink(message)}
-        target="_blank"
-        rel="noreferrer"
-        className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-full bg-brand px-5 py-3 text-sm font-bold text-brand-foreground hover:bg-brand-strong"
-      >
-        <MessageCircle size={16} /> {selectedUnit ? `Enquire about ${selectedUnit.number}` : 'Enquire about this flat'}
-      </a>
+      <div className="mt-4 grid grid-cols-2 gap-2">
+        <a
+          href={enquiryLink(message)}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center justify-center gap-2 rounded-full bg-brand px-4 py-2.5 text-sm font-bold text-brand-foreground hover:bg-brand-strong"
+        >
+          <MessageCircle size={16} /> {selectedUnit ? `Enquire ${selectedUnit.number}` : 'Enquire'}
+        </a>
+        <a
+          href={directionsUrl(project.location)}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center justify-center gap-2 rounded-full border border-border px-4 py-2.5 text-sm font-bold hover:border-brand hover:text-brand"
+        >
+          <Navigation size={16} /> Navigate
+        </a>
+      </div>
 
       {compare && (
         <button
@@ -302,8 +350,72 @@ export function FlatPanel({
           {compare.inList ? 'Remove from compare' : compare.full ? 'Compare list is full' : 'Add to compare'}
         </button>
       )}
+
+      <details className="group mt-4 border-t border-border pt-3">
+        <summary className="flex cursor-pointer list-none items-center justify-between text-xs font-bold tracking-[0.15em] text-muted-foreground uppercase">
+          Floor plan &amp; rooms
+          <ChevronDown size={16} className="transition-transform group-open:rotate-180" />
+        </summary>
+        <div className="mt-2">
+          {plot.plan && (
+            <>
+              <FlatPlanCrop blockId={plot.plan.blockId} flatNo={plot.plan.flatNo} className="border border-border" />
+              <p className="mt-1.5 text-[11px] text-muted-foreground">
+                The flat on its block's typical floor plan, as printed in the brochure.
+              </p>
+              <ExplorerLinks plan={plot.plan} unit={selectedUnit} />
+            </>
+          )}
+          <table className="mt-3 w-full">
+            <tbody>
+              {plot.rooms.map((roomItem, index) => (
+                <tr key={index} className="border-t border-border">
+                  <td className="py-1.5 pr-3 text-white/85">{roomItem.name}</td>
+                  <td className="py-1.5 text-right font-semibold tabular-nums">{roomItem.size}</td>
+                </tr>
+              ))}
+              <tr className="border-t border-border">
+                <td className="py-1.5 pr-3 text-white/85">Total area</td>
+                <td className="py-1.5 text-right font-semibold">
+                  {area.sqft}
+                  <span className="block text-xs font-normal text-muted-foreground">
+                    {area.sqyd} · {area.sqm}
+                  </span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </details>
     </aside>
   )
+}
+
+// Land in square yards, as plots are sold, with square feet underneath
+function LandArea({ sqMetres }) {
+  const area = formatArea(sqMetres)
+  return (
+    <>
+      {area.sqyd}
+      <span className="block text-xs font-normal text-muted-foreground">{area.sqft}</span>
+    </>
+  )
+}
+
+// The flat types among some plots: "2 BHK", "3 BHK", or "2 & 3 BHKs" when there are both
+function bhkMix(plots) {
+  const counts = [...new Set(plots.map((p) => parseInt(p.bhk, 10)).filter(Number.isFinite))].sort((a, b) => a - b)
+  if (!counts.length) return ''
+  return counts.length === 1 ? `${counts[0]} BHK` : `${counts.join(' & ')} BHKs`
+}
+
+// How many flats each floor has, from a list of units
+function countPerFloor(units) {
+  const perFloor = {}
+  units.forEach((unit) => {
+    perFloor[unit.floor] = (perFloor[unit.floor] ?? 0) + 1
+  })
+  return Object.values(perFloor)
 }
 
 // Deep links into the IRA Towers site: the flat's floor plan and 3D view, and its virtual tour.
@@ -517,6 +629,98 @@ export function SearchPanel({ project, onSelect, onClose }) {
           </li>
         ))}
         {matches.length === 0 && <li className="px-2 py-1.5 text-muted-foreground">No match</li>}
+      </ul>
+    </Panel>
+  )
+}
+
+// One filter's choices as chips; any number can be on at once
+function QueryChips({ label, options, chosen, onChange }) {
+  if (!options.length) return null
+  return (
+    <fieldset className="mb-3">
+      <legend className="mb-1.5 text-[11px] font-bold tracking-wider text-muted-foreground uppercase">{label}</legend>
+      <div className="flex flex-wrap gap-1.5">
+        {options.map(({ value, label: text }) => {
+          const on = chosen.includes(value)
+          return (
+            <button
+              key={text}
+              type="button"
+              aria-pressed={on}
+              onClick={() => onChange(on ? chosen.filter((v) => v !== value) : [...chosen, value])}
+              className={`${CHIP} ${on ? 'border-brand bg-brand text-black' : 'border-border bg-background hover:bg-white/5'}`}
+            >
+              {text}
+            </button>
+          )
+        })}
+      </div>
+    </fieldset>
+  )
+}
+
+// Pick flats by BHK, facing, size and availability; the map fades every other flat back
+export function QueryPanel({ project, plots, query, onChange, onSelect, onClose }) {
+  const options = queryOptions(plots)
+  const matches = runQuery(plots, query)
+  const set = (key) => (value) => onChange({ ...query, [key]: value })
+  const asOptions = (values) => values.map((value) => ({ value, label: value }))
+  const hasAvailability = plots.some((plot) => plot.availableCount != null || plot.status)
+
+  return (
+    <Panel title="Query" onClose={onClose}>
+      <QueryChips label="Type" options={asOptions(options.bhk)} chosen={query.bhk} onChange={set('bhk')} />
+      <QueryChips label="Facing" options={asOptions(options.facing)} chosen={query.facing} onChange={set('facing')} />
+      <QueryChips
+        label="Size"
+        options={options.size.map(({ index, label }) => ({ value: index, label }))}
+        chosen={query.size}
+        onChange={set('size')}
+      />
+      {hasAvailability && (
+        <label className="mb-3 flex cursor-pointer items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={query.availableOnly}
+            onChange={(event) => onChange({ ...query, availableOnly: event.target.checked })}
+            className="accent-brand"
+          />
+          Only {project.unitLabel.toLowerCase()}s with floors available
+        </label>
+      )}
+      <div className="flex items-center justify-between border-t border-border pt-2 text-xs text-muted-foreground">
+        <span>
+          {matches.length} {project.unitLabel.toLowerCase()}
+          {matches.length === 1 ? '' : 's'} match
+        </span>
+        {!isQueryEmpty(query) && (
+          <button
+            type="button"
+            onClick={() => onChange(EMPTY_QUERY)}
+            className="cursor-pointer text-brand hover:underline"
+          >
+            Clear
+          </button>
+        )}
+      </div>
+      <ul className="mt-1 max-h-40 overflow-y-auto">
+        {matches.map((plot) => (
+          <li key={plot.number}>
+            <button
+              type="button"
+              onClick={() => onSelect(plot)}
+              className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left hover:bg-white/5"
+            >
+              <span>
+                {project.unitLabel} {plot.number}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {[plot.bhk, plot.facing, plot.areaSqFt && `${plot.areaSqFt} sft`].filter(Boolean).join(' · ')}
+              </span>
+            </button>
+          </li>
+        ))}
       </ul>
     </Panel>
   )

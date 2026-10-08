@@ -1,95 +1,87 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AttributionControl, LngLatBounds, Map as MapLibreMap, Marker } from 'maplibre-gl'
 import '@/utils/maplibre'
-import { MAPTILER_KEY as KEY, hybridStyleUrl } from '@/config/maps'
-import { Box, Home, Share2 } from 'lucide-react'
-import { centroid } from '@/utils/geo'
+import {
+  GOOGLE_MAPS_KEY,
+  MAPTILER_KEY as KEY,
+  googleHybridSource,
+  hybridStyleUrl,
+  streetTilesSource,
+} from '@/config/maps'
+import { Box, Home, Layers, Maximize, Minimize, Minus, Plus, Printer, Ruler, Share2, Undo2, X } from 'lucide-react'
+import { centroid, distanceMetres, formatDistance, lineMetres } from '@/utils/geo'
 import { buildLayoutGeoJson } from '@/components/viewer/layoutGeoJson'
 import Compass from '@/components/viewer/Compass'
+import {
+  BLOCK_LAYERS,
+  CLICKABLE_LAYERS,
+  ESRI_IMAGERY,
+  FLAT_ONLY_LAYERS,
+  IMAGERY_SOURCE,
+  LAYERS,
+  MEASURE_LAYERS,
+  MEASURE_SOURCE,
+  NEARBY_LAYERS,
+  NEARBY_SOURCE,
+  ROAD_LAYERS,
+  ROADS_MIN_ZOOM,
+  SOURCE,
+  addIcons,
+  measureGeoJson,
+  nearbyGeoJson,
+} from '@/components/viewer/mapStyle'
 
-const SOURCE = 'layout'
 const OVERLAY_SOURCE = 'plan-drawing'
-const IS_UNIT = ['any', ['==', ['get', 'kind'], 'plot'], ['==', ['get', 'kind'], 'amenity']]
-const IS_BOUNDARY = ['==', ['get', 'kind'], 'boundary']
-const IS_BLOCK = ['==', ['get', 'kind'], 'block']
-const IS_RAISED = ['all', IS_UNIT, ['>', ['get', 'height'], 0]]
-
-// How the layout is drawn. Each layer reads colours, opacities and labels from the GeoJSON properties.
-const LAYERS = [
-  { id: 'boundary-fill', type: 'fill', filter: IS_BOUNDARY, paint: { 'fill-color': '#ffffff', 'fill-opacity': 0.06 } },
-  {
-    id: 'boundary-line',
-    type: 'line',
-    filter: IS_BOUNDARY,
-    paint: { 'line-color': '#ffffff', 'line-opacity': 0.6, 'line-width': 1.5 },
-  },
-  {
-    id: 'plots-fill',
-    type: 'fill',
-    filter: IS_UNIT,
-    paint: { 'fill-color': ['get', 'fill'], 'fill-opacity': ['get', 'fillOpacity'] },
-  },
-  // Darkens the blocks that are not chosen; invisible otherwise, but still clickable
-  {
-    id: 'blocks-dim',
-    type: 'fill',
-    filter: IS_BLOCK,
-    paint: { 'fill-color': '#0a0a0a', 'fill-opacity': ['case', ['get', 'dim'], 0.62, 0] },
-  },
-  {
-    id: 'blocks-line',
-    type: 'line',
-    filter: IS_BLOCK,
-    paint: { 'line-color': '#75c217', 'line-width': 2.5, 'line-opacity': ['case', ['get', 'selected'], 1, 0] },
-  },
-  {
-    id: 'plots-3d',
-    type: 'fill-extrusion',
-    filter: IS_RAISED,
-    layout: { visibility: 'none' },
-    paint: {
-      'fill-extrusion-color': ['get', 'fill'],
-      'fill-extrusion-height': ['get', 'height'],
-      'fill-extrusion-opacity': 0.9,
-    },
-  },
-  {
-    id: 'plots-line',
-    type: 'line',
-    filter: IS_UNIT,
-    paint: {
-      'line-color': ['case', ['get', 'selected'], '#75c217', '#ffffff'],
-      'line-width': ['case', ['get', 'selected'], 3, 1],
-      'line-opacity': ['case', ['get', 'selected'], 1, ['get', 'outlineOpacity']],
-    },
-  },
-  {
-    id: 'plots-label',
-    type: 'symbol',
-    filter: IS_UNIT,
-    layout: {
-      'text-field': ['get', 'label'],
-      'text-size': ['get', 'labelSize'],
-      'text-font': ['Open Sans Bold'],
-      'text-allow-overlap': true,
-      'text-max-width': 8,
-    },
-    paint: {
-      'text-color': ['get', 'labelColour'],
-      'text-opacity': ['get', 'labelOpacity'],
-      'text-halo-color': 'rgba(0, 0, 0, 0.75)',
-      'text-halo-width': ['get', 'labelHalo'],
-    },
-  },
-]
-const CLICKABLE_LAYERS = ['plots-fill', 'plots-3d']
-const BLOCK_LAYERS = ['blocks-dim']
+const STREET_LAYER = 'street-map'
+const SCREEN_PX_PER_METRE = 96 / 0.0254 // a CSS pixel is 1/96 inch
+const ORBIT_DEG_PER_PX = 0.35 // a drag across a laptop screen turns the map about 360°
+const ORBIT_PITCH_PER_PX = 0.25
+const MAX_PITCH = 75
+const CLICK_TOLERANCE_PX = 4
 
 // Where the map should keep its centre when a side panel covers part of it
 const panelOffset = () => (window.innerWidth >= 768 ? [-200, -40] : [0, -140])
 
 const ROUND_BUTTON =
   'inline-flex size-12 cursor-pointer items-center justify-center rounded-full bg-card/90 text-white backdrop-blur transition-colors hover:bg-border'
+const SMALL_BUTTON =
+  'inline-flex size-10 cursor-pointer items-center justify-center rounded-lg bg-card/90 text-white backdrop-blur transition-colors hover:bg-border'
+
+// Zoom, position and map scale for the readout, as a surveyor's map shows them. MapLibre's zoom
+// counts 512 px tiles, so a pixel covers 78,271.5 m x cos(latitude) / 2^zoom of ground.
+function readoutFor(map, lngLat = map.getCenter()) {
+  const zoom = map.getZoom()
+  const metresPerPx = (78271.517 * Math.cos((lngLat.lat * Math.PI) / 180)) / 2 ** zoom
+  return { zoom, lat: lngLat.lat, lng: lngLat.lng, scale: Math.round(metresPerPx * SCREEN_PX_PER_METRE) }
+}
+
+// A picture of the map as it is now, on its own page with the project's name, ready to print
+function printMap(map, title) {
+  const win = window.open('', '_blank') // opened now, while the click still counts, or it is blocked
+  if (!win) return
+  map.once('render', () => {
+    // Read in the same frame it was drawn in, before the browser clears the canvas
+    const image = map.getCanvas().toDataURL('image/png')
+    const doc = win.document
+    doc.title = title
+    doc.body.style.cssText = 'margin:24px;font-family:system-ui,sans-serif;color:#1f2d3d'
+    const heading = doc.createElement('h1')
+    heading.textContent = title
+    heading.style.cssText = 'margin:0 0 4px;font-size:22px'
+    const date = doc.createElement('p')
+    date.textContent = new Date().toLocaleDateString('en-IN', { dateStyle: 'long' })
+    date.style.cssText = 'margin:0 0 12px;font-size:12px;color:#5b6b7b'
+    const picture = doc.createElement('img')
+    picture.style.cssText = 'width:100%;border:1px solid #ccd5de'
+    picture.onload = () => win.print()
+    picture.src = image
+    const credit = doc.createElement('p')
+    credit.textContent = map.getContainer().querySelector('.maplibregl-ctrl-attrib-inner')?.textContent ?? ''
+    credit.style.cssText = 'font-size:10px;color:#5b6b7b'
+    doc.body.append(heading, date, picture, credit)
+  })
+  map.triggerRepaint()
+}
 
 // Shown until a MapTiler key is added to .env.local
 function MissingKey() {
@@ -116,6 +108,7 @@ function MapView({
   colorMode,
   selectedPlot,
   selectedBlock,
+  highlight = null,
   onSelectPlot,
   onSelectBlock,
   userPosition,
@@ -131,42 +124,130 @@ function MapView({
   const selectRef = useRef(onSelectPlot)
   const selectBlockRef = useRef(onSelectBlock)
 
+  const openedOnSelection = useRef(Boolean(selectedPlot || selectedBlock))
+
   const [ready, setReady] = useState(false) // true once the map style and layers are loaded
   const [heading, setHeading] = useState(0)
   const [is3D, setIs3D] = useState(false)
+  const is3DRef = useRef(false) // for the drag handler, which is bound once
+  const [basemap, setBasemap] = useState('satellite') // 'satellite' | 'street'
+  const basemapRef = useRef('satellite') // for the street layer, which is added once imagery is ready
+  const [measuring, setMeasuring] = useState(false)
+  const measuringRef = useRef(false) // for the click listener, which is bound once
+  const [measurePoints, setMeasurePoints] = useState([])
+  const [fullscreen, setFullscreen] = useState(false)
+  const [readout, setReadout] = useState(null) // zoom, position and scale under the pointer
 
   useEffect(() => {
     selectRef.current = onSelectPlot
     selectBlockRef.current = onSelectBlock
   }, [onSelectPlot, onSelectBlock])
 
-  // Zoom so the whole layout is in view
+  // Zoom so the whole layout is in view, keeping the map's turn and tilt unless told otherwise
   const fitProject = useCallback(
-    (map) => {
+    (map, duration = 600, bearing = map.getBearing(), pitch = map.getPitch()) => {
       const bounds = new LngLatBounds()
       const rings = [project.layout.boundary, ...project.layout.plots.map((plot) => plot.polygon)]
       rings.filter(Boolean).forEach((ring) => ring.forEach((point) => bounds.extend(point)))
       if (bounds.isEmpty()) bounds.extend(project.location)
-      map.fitBounds(bounds, { padding: 80, duration: 600 })
+      map.fitBounds(bounds, {
+        padding: 80,
+        bearing,
+        pitch,
+        duration,
+        animate: duration > 0,
+        curve: 1.6,
+        essential: false,
+      })
     },
     [project],
   )
+
+  const introRunning = useRef(false) // the opening flight down to the site
+
+  // Turning the map mid-flight would leave it stranded zoomed out over the city, so the flight
+  // jumps to its end first
+  const finishIntro = useCallback(
+    (map) => {
+      if (!introRunning.current) return
+      introRunning.current = false
+      map.stop()
+      fitProject(map, 0)
+    },
+    [fitProject],
+  )
+
+  const pointNorth = () => {
+    const map = mapRef.current
+    if (!map) return
+    finishIntro(map)
+    map.easeTo({ bearing: 0, duration: 600 })
+  }
+
+  const turnTo = (bearing) => {
+    const map = mapRef.current
+    if (!map) return
+    finishIntro(map)
+    map.jumpTo({ bearing })
+  }
 
   // 1. Create the map once, and remove it when the page closes
   useEffect(() => {
     if (!KEY) return
 
+    // Like a drone shot: open on the region and fly down to the site, unless the link opened a flat
+    const flyIn = !openedOnSelection.current
     const map = new MapLibreMap({
       container: containerRef.current,
       style: hybridStyleUrl(KEY),
       center: project.location,
-      zoom: 17,
+      zoom: flyIn ? 9 : 17,
+      maxZoom: 21,
       maxPitch: 75,
       attributionControl: false,
     })
     map.addControl(new AttributionControl({ compact: true }), 'bottom-left')
 
+    // Google's satellite photo and roads, asked for while the style loads (null without a key or
+    // if Google refuses, and the map falls back to Esri's imagery)
+    const googleSource = GOOGLE_MAPS_KEY ? googleHybridSource(GOOGLE_MAPS_KEY).catch(() => null) : null
+
     map.on('load', () => {
+      const styleLayerIds = map.getStyle().layers.map((layer) => layer.id)
+      Promise.resolve(googleSource).then((google) => {
+        if (mapRef.current !== map) return // the page closed while waiting
+        // Layer ids are MapTiler's hybrid style; each step is skipped if the style changes
+        const styleLayer = (id) => (map.getLayer(id) ? id : undefined)
+        if (google) {
+          // Google's photo with Google's own roads and names: the style's layers are all put away
+          map.addSource(IMAGERY_SOURCE, google)
+          map.addLayer({ id: 'imagery', type: 'raster', source: IMAGERY_SOURCE }, styleLayer(styleLayerIds[0]))
+          styleLayerIds.forEach((id) => map.setLayoutProperty(id, 'visibility', 'none'))
+        } else {
+          // Current imagery in place of the style's own photo, and the real roads drawn as tarmac
+          map.addSource(IMAGERY_SOURCE, ESRI_IMAGERY)
+          map.addLayer({ id: 'imagery', type: 'raster', source: IMAGERY_SOURCE }, styleLayer('Tunnel'))
+          if (styleLayer('Satellite')) map.setLayoutProperty('Satellite', 'visibility', 'none')
+          if (styleLayer('Road')) map.setLayerZoomRange('Road', 0, ROADS_MIN_ZOOM)
+          if (map.getSource('maptiler_planet')) {
+            ROAD_LAYERS.forEach((layer) => map.addLayer(layer, styleLayer('Road labels')))
+          }
+        }
+        // The street map, for the Satellite / Street switch: over the photo and its roads, under
+        // the layout (whose layers were added while the imagery was on its way)
+        map.addSource(STREET_LAYER, streetTilesSource(KEY))
+        map.addLayer(
+          {
+            id: STREET_LAYER,
+            type: 'raster',
+            source: STREET_LAYER,
+            layout: { visibility: basemapRef.current === 'street' ? 'visible' : 'none' },
+          },
+          styleLayer(OVERLAY_SOURCE) ?? styleLayer(LAYERS[0].id),
+        )
+      })
+      addIcons(map)
+
       // The plan drawing, if the project has one, sits under everything else
       const { overlay } = project.layout
       if (overlay) {
@@ -180,7 +261,17 @@ function MapView({
       }
 
       map.addSource(SOURCE, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
-      LAYERS.forEach((layer) => map.addLayer({ ...layer, source: SOURCE }))
+      LAYERS.forEach((layer) => map.addLayer(layer))
+      // The brochure's nearby places, pinned with their distance once the map pulls back
+      if (project.nearby?.length) {
+        map.addSource(NEARBY_SOURCE, {
+          type: 'geojson',
+          data: nearbyGeoJson(project.nearby, project.location, distanceMetres),
+        })
+        NEARBY_LAYERS.forEach((layer) => map.addLayer(layer))
+      }
+      map.addSource(MEASURE_SOURCE, { type: 'geojson', data: measureGeoJson([]) })
+      MEASURE_LAYERS.forEach((layer) => map.addLayer(layer))
 
       // Real buildings for the 3D view, when the project has block footprints or a model.
       // three.js is large, so it is only downloaded for projects that need it.
@@ -195,6 +286,11 @@ function MapView({
       // A click on a plot selects it, a click on a block chooses that block,
       // and a click anywhere else clears the plot selection
       map.on('click', (event) => {
+        // While measuring, every click is a point on the line
+        if (measuringRef.current) {
+          setMeasurePoints((points) => [...points, event.lngLat.toArray()])
+          return
+        }
         const hits = map.queryRenderedFeatures(event.point, { layers: CLICKABLE_LAYERS })
         if (hits.length) {
           selectRef.current(project.layout.plots.find((p) => p.number === hits[0].properties.number) || null)
@@ -208,29 +304,78 @@ function MapView({
         selectRef.current(null)
       })
       map.on('mousemove', (event) => {
+        setReadout(readoutFor(map, event.lngLat))
+        if (measuringRef.current) return // the crosshair stays
         const hits = map.queryRenderedFeatures(event.point, { layers: [...CLICKABLE_LAYERS, ...BLOCK_LAYERS] })
         map.getCanvas().style.cursor = hits.length ? 'pointer' : ''
       })
+      // Without a pointer on the map (a phone, or a zoom button) the readout follows the centre
+      map.on('moveend', () => setReadout(readoutFor(map)))
 
-      fitProject(map)
+      fitProject(map, flyIn ? 5500 : 600)
+      if (flyIn) {
+        introRunning.current = true
+        map.once('moveend', () => (introRunning.current = false))
+      }
       setReady(true)
     })
     map.on('rotate', () => setHeading(map.getBearing()))
 
+    // Dragging with the mouse turns the map round its centre, a full 360°; in 3D, dragging up and
+    // down also tilts it. Shift + drag pans. Touch keeps the usual gestures (two fingers to turn).
+    map.boxZoom.disable() // Shift + drag is the pan now
+    const canvas = map.getCanvasContainer()
+    let orbit = null
+    const onOrbitMove = (event) => {
+      const dx = event.clientX - orbit.x
+      const dy = event.clientY - orbit.y
+      if (!orbit.moved && Math.hypot(dx, dy) < CLICK_TOLERANCE_PX) return
+      orbit.moved = true
+      map.jumpTo({
+        bearing: orbit.bearing - dx * ORBIT_DEG_PER_PX,
+        pitch: is3DRef.current ? Math.min(MAX_PITCH, Math.max(0, orbit.pitch - dy * ORBIT_PITCH_PER_PX)) : 0,
+      })
+    }
+    // The browser still sends a click when a turning drag ends; swallow it so it selects nothing
+    const swallowClick = (event) => event.stopPropagation()
+    const onOrbitEnd = () => {
+      window.removeEventListener('mousemove', onOrbitMove)
+      window.removeEventListener('mouseup', onOrbitEnd)
+      map.dragPan.enable()
+      if (orbit?.moved) {
+        canvas.addEventListener('click', swallowClick, { capture: true, once: true })
+        setTimeout(() => canvas.removeEventListener('click', swallowClick, true), 0)
+      }
+      orbit = null
+    }
+    const onOrbitStart = (event) => {
+      if (event.button !== 0 || event.shiftKey) return
+      finishIntro(map)
+      map.dragPan.disable() // before MapLibre's own handler sees this press
+      orbit = { x: event.clientX, y: event.clientY, bearing: map.getBearing(), pitch: map.getPitch(), moved: false }
+      window.addEventListener('mousemove', onOrbitMove)
+      window.addEventListener('mouseup', onOrbitEnd)
+    }
+    canvas.addEventListener('mousedown', onOrbitStart, true)
+
     mapRef.current = map
     return () => {
+      onOrbitEnd()
+      canvas.removeEventListener('mousedown', onOrbitStart, true)
       map.remove()
       mapRef.current = null
       buildingsRef.current = null
       setReady(false)
     }
-  }, [project, fitProject])
+  }, [project, fitProject, finishIntro])
 
   // 2. Push the layout to the map whenever colours or the selection change
   useEffect(() => {
     if (!ready) return
-    mapRef.current.getSource(SOURCE).setData(buildLayoutGeoJson(project, { colorMode, selectedPlot, selectedBlock }))
-  }, [ready, project, colorMode, selectedPlot, selectedBlock])
+    mapRef.current
+      .getSource(SOURCE)
+      .setData(buildLayoutGeoJson(project, { colorMode, selectedPlot, selectedBlock, highlight }))
+  }, [ready, project, colorMode, selectedPlot, selectedBlock, highlight])
 
   // 3. Move to a plot when it is chosen from search or by a click
   useEffect(() => {
@@ -281,19 +426,76 @@ function MapView({
     }
   }, [ready, userPosition])
 
+  // 5. Satellite or street map under the layout
+  useEffect(() => {
+    basemapRef.current = basemap
+    if (ready && mapRef.current.getLayer(STREET_LAYER)) {
+      mapRef.current.setLayoutProperty(STREET_LAYER, 'visibility', basemap === 'street' ? 'visible' : 'none')
+    }
+  }, [ready, basemap])
+
+  // 6. The measured line
+  useEffect(() => {
+    if (ready) mapRef.current.getSource(MEASURE_SOURCE).setData(measureGeoJson(measurePoints))
+  }, [ready, measurePoints])
+
+  const stopMeasuring = useCallback(() => {
+    measuringRef.current = false
+    setMeasuring(false)
+    setMeasurePoints([])
+    if (mapRef.current) mapRef.current.getCanvas().style.cursor = ''
+  }, [])
+
+  const toggleMeasuring = () => {
+    if (!ready) return
+    if (measuring) {
+      stopMeasuring()
+      return
+    }
+    measuringRef.current = true
+    setMeasuring(true)
+    mapRef.current.getCanvas().style.cursor = 'crosshair'
+  }
+
+  // Escape puts the ruler away
+  useEffect(() => {
+    if (!measuring) return
+    const onKey = (event) => event.key === 'Escape' && stopMeasuring()
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [measuring, stopMeasuring])
+
+  // The whole page goes full screen, so the panels and buttons come along
+  useEffect(() => {
+    const onChange = () => setFullscreen(Boolean(document.fullscreenElement))
+    document.addEventListener('fullscreenchange', onChange)
+    return () => document.removeEventListener('fullscreenchange', onChange)
+  }, [])
+
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement) document.exitFullscreen()
+    else document.documentElement.requestFullscreen?.().catch(() => {})
+  }
+
+  const zoomBy = (delta) => {
+    if (!ready) return
+    finishIntro(mapRef.current)
+    mapRef.current.easeTo({ zoom: mapRef.current.getZoom() + delta, duration: 300 })
+  }
+
+  const print = () => {
+    if (ready) printMap(mapRef.current, `${project.name} · ${project.city}`)
+  }
+
   // Flat shapes in 2D. In 3D, projects with buildings show them; others raise their plots.
   const set3D = (on) => {
     const map = mapRef.current
     const buildings = buildingsRef.current
     buildings?.setVisible(on)
     map.setLayoutProperty('plots-3d', 'visibility', on && !buildings ? 'visible' : 'none')
-    map.setLayoutProperty('plots-fill', 'visibility', on ? 'none' : 'visible')
-    // Flat numbers would float on top of the buildings, so they rest until 2D returns
-    map.setPaintProperty(
-      'plots-label',
-      'text-opacity',
-      on && buildings ? ['case', ['==', ['get', 'kind'], 'plot'], 0, ['get', 'labelOpacity']] : ['get', 'labelOpacity'],
-    )
+    // Flat tiles and numbers would sit under or float over the buildings, so they rest until 2D returns
+    FLAT_ONLY_LAYERS.forEach((id) => map.setLayoutProperty(id, 'visibility', on ? 'none' : 'visible'))
+    is3DRef.current = on
     setIs3D(on)
   }
 
@@ -313,8 +515,7 @@ function MapView({
   const goHome = () => {
     if (!ready) return
     set3D(false)
-    mapRef.current.easeTo({ pitch: 0, bearing: 0, duration: 600 })
-    fitProject(mapRef.current)
+    fitProject(mapRef.current, 600, 0, 0)
   }
 
   if (!KEY) return <MissingKey />
@@ -327,11 +528,88 @@ function MapView({
       </div>
 
       <div className="absolute top-24 left-5">
-        <Compass heading={heading} onReset={() => mapRef.current?.easeTo({ bearing: 0 })} />
+        <Compass heading={heading} onClick={pointNorth} onRotate={turnTo} />
       </div>
 
+      {/* Map tools under the compass; phones zoom and pan with their fingers instead */}
+      <div role="toolbar" aria-label="Map tools" className="absolute top-48 left-6 hidden flex-col gap-1.5 md:flex">
+        <button type="button" onClick={() => zoomBy(1)} title="Zoom in" className={SMALL_BUTTON}>
+          <Plus size={18} />
+        </button>
+        <button type="button" onClick={() => zoomBy(-1)} title="Zoom out" className={SMALL_BUTTON}>
+          <Minus size={18} />
+        </button>
+        <button
+          type="button"
+          onClick={() => setBasemap(basemap === 'satellite' ? 'street' : 'satellite')}
+          title={basemap === 'satellite' ? 'Show the street map' : 'Show the satellite photo'}
+          aria-pressed={basemap === 'street'}
+          className={`${SMALL_BUTTON} ${basemap === 'street' ? 'text-brand' : ''}`}
+        >
+          <Layers size={18} />
+        </button>
+        <button
+          type="button"
+          onClick={toggleMeasuring}
+          title={measuring ? 'Stop measuring' : 'Measure a distance'}
+          aria-pressed={measuring}
+          className={`${SMALL_BUTTON} ${measuring ? 'text-brand' : ''}`}
+        >
+          <Ruler size={18} />
+        </button>
+        <button type="button" onClick={print} title="Print the map" className={SMALL_BUTTON}>
+          <Printer size={18} />
+        </button>
+        <button
+          type="button"
+          onClick={toggleFullscreen}
+          title={fullscreen ? 'Leave full screen' : 'Full screen'}
+          className={SMALL_BUTTON}
+        >
+          {fullscreen ? <Minimize size={18} /> : <Maximize size={18} />}
+        </button>
+      </div>
+
+      {measuring && (
+        <div
+          role="status"
+          className="absolute top-32 left-1/2 z-10 flex -translate-x-1/2 items-center gap-3 rounded-full bg-card/95 py-1.5 pr-1.5 pl-4 text-sm backdrop-blur"
+        >
+          <Ruler size={16} className="text-brand" />
+          <span className="font-semibold tabular-nums">
+            {measurePoints.length < 2 ? 'Click points on the map' : formatDistance(lineMetres(measurePoints))}
+          </span>
+          <button
+            type="button"
+            onClick={() => setMeasurePoints((points) => points.slice(0, -1))}
+            disabled={!measurePoints.length}
+            title="Remove the last point"
+            className="cursor-pointer rounded-full p-1.5 text-muted-foreground hover:text-white disabled:cursor-default disabled:opacity-40"
+          >
+            <Undo2 size={16} />
+          </button>
+          <button
+            type="button"
+            onClick={stopMeasuring}
+            title="Stop measuring"
+            className="cursor-pointer rounded-full p-1.5 text-muted-foreground hover:text-white"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
+
+      {readout && (
+        <p className="pointer-events-none absolute bottom-12 left-5 hidden gap-3 rounded-md bg-black/60 px-2.5 py-1 text-[11px] text-white/85 tabular-nums backdrop-blur md:flex">
+          <span>Zoom {readout.zoom.toFixed(2)}</span>
+          <span>Lat {readout.lat.toFixed(5)}</span>
+          <span>Long {readout.lng.toFixed(5)}</span>
+          <span>Scale 1:{readout.scale.toLocaleString('en-IN')}</span>
+        </p>
+      )}
+
       <div
-        className={`absolute bottom-40 flex flex-col gap-2 transition-[right] md:bottom-48 ${
+        className={`absolute bottom-44 flex flex-col gap-2 transition-[right] md:bottom-36 ${
           sidePanelOpen ? 'right-5 md:right-104' : 'right-5'
         }`}
       >
@@ -339,7 +617,7 @@ function MapView({
           type="button"
           onClick={toggle3D}
           aria-pressed={is3D}
-          title={is3D ? 'Back to 2D' : 'View in 3D (drag with the right mouse button or two fingers to rotate)'}
+          title={is3D ? 'Back to 2D' : 'View in 3D (drag to turn and tilt, Shift + drag to move)'}
           className={`${ROUND_BUTTON} ${is3D ? 'text-brand' : ''}`}
         >
           <Box size={18} />

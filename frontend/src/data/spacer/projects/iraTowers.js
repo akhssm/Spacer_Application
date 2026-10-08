@@ -1,6 +1,6 @@
 // IRA Towers as a Spacer project: the viewer at /p/ira-towers.
 //
-// Geometry is Spacer's satellite tracing (iraTowersGeometry.js). Everything a buyer reads about a
+// Geometry is the brochure master plan fitted to current satellite imagery (iraTowersGeometry.js). Everything a buyer reads about a
 // flat — BHK, facing, area, rooms and its plan — comes from the brochure data layer in src/data, the
 // same source the IRA Towers site uses, so the viewer and the site always agree.
 //
@@ -18,7 +18,10 @@ import {
   IRA_TOWERS_BOUNDARY,
   IRA_TOWERS_CORES,
   IRA_TOWERS_PLOTS,
+  IRA_TOWERS_ROADS,
+  IRA_TOWERS_TREES,
 } from '@/data/spacer/projects/iraTowersGeometry'
+import { IRA_TOWERS_NEARBY } from '@/data/spacer/projects/iraTowersNearby'
 
 // "A-01" -> { blockId: 'A', flatNo: 1 }. The master plan labels flat 13 of Block C as "12 A".
 function flatRef(number) {
@@ -116,7 +119,10 @@ export const iraTowers = {
   city: ira.location.city,
   address: ira.location.addressLines.join(', '),
   description: `Luxury high-rise ${ira.headline.configurations} apartments by ${ira.developer} in ${ira.location.locality}: three blocks and a ${ira.headline.clubhouseAreaSft.toLocaleString('en-IN')} sq.ft clubhouse.`,
-  location: [78.380047, 17.511612], // decoded from the plus code G96J+J2V
+  // The brochure's location QR code (p22): a Google Maps pin at the site entrance
+  location: [78.3800556, 17.5108889],
+  // The brochure's nearby places (p22), pinned on the map when it is zoomed out
+  nearby: IRA_TOWERS_NEARBY,
   whatsapp: '',
   theme: { accent: '#3f66c9' }, // card colour on the landing page
   zones: ['Block A', 'Block B', 'Block C', 'Amenities'],
@@ -130,6 +136,8 @@ export const iraTowers = {
     boundary: IRA_TOWERS_BOUNDARY,
     blocks: IRA_TOWERS_BLOCKS,
     cores: IRA_TOWERS_CORES, // lift and stair cores, drawn in 3D
+    roads: IRA_TOWERS_ROADS, // driveways inside the site
+    trees: IRA_TOWERS_TREES, // planting along the compound wall
     plots: [
       ...IRA_TOWERS_PLOTS.map((plot) => ({ ...plot, ...flatDetails(plot.number) })),
       ...IRA_TOWERS_AMENITIES.map((amenity) => ({ ...amenity, ...AMENITY_DETAILS[amenity.number] })),
