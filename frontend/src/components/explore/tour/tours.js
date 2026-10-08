@@ -18,7 +18,11 @@
  * Angles are calibrated for the generated panorama renders.
  */
 
-const view = (yaw = 0, pitch = 0, fov = 80) => ({ yaw, pitch, fov })
+import { MAX_FOV } from './look'
+
+// Every room opens fully zoomed out and looking a little down, so the whole room and its
+// furniture are in view; visitors zoom in from there
+const view = (yaw = 0, pitch = -15, fov = MAX_FOV) => ({ yaw, pitch, fov })
 
 const TOURS = [
   {
@@ -147,9 +151,14 @@ const TOURS = [
         initialView: view(),
         northOffset: 0,
         intro: { pitch: 62, fov: 100, ms: 3500 },
+        // At each room's doorway: the two doors on the left wall, the black-framed door past the
+        // armchairs, the kitchen opening, and the glazing to the balcony
         links: [
           { to: 'kitchen', yaw: 105, pitch: -8 },
-          { to: 'balcony', yaw: -91, pitch: -8 },
+          { to: 'balcony', yaw: 172, pitch: -8 },
+          { to: 'master-bedroom', yaw: -90, pitch: -8 },
+          { to: 'bedroom-2', yaw: -72, pitch: -8 },
+          { to: 'bedroom-3', yaw: 45, pitch: -8 },
         ],
         reference: {
           clip: 'docs/3bhk/living room.mp4',
@@ -176,7 +185,11 @@ const TOURS = [
         planRooms: ['master-bedroom'],
         initialView: view(),
         northOffset: 180,
-        links: [],
+        // The entrance door beside the plant, and the bathroom door past the dressing table
+        links: [
+          { to: 'living', yaw: -106, pitch: -8 },
+          { to: 'toilet-1', yaw: -60, pitch: -8 },
+        ],
         reference: {
           clip: 'docs/3bhk/Master bedroom.mp4',
           visible:
@@ -189,7 +202,8 @@ const TOURS = [
         planRooms: ['bedroom-2'],
         initialView: view(),
         northOffset: 180,
-        links: [],
+        // The entrance door behind the camera
+        links: [{ to: 'living', yaw: 178, pitch: -8 }],
         reference: {
           clip: 'docs/3bhk/bedroom2.mp4',
           visible:
@@ -202,7 +216,8 @@ const TOURS = [
         planRooms: ['bedroom-3'],
         initialView: view(),
         northOffset: -90,
-        links: [],
+        // The wooden entrance door on the left
+        links: [{ to: 'living', yaw: -144, pitch: -8 }],
         reference: {
           clip: 'docs/3bhk/bedroom3.mp4',
           visible:
@@ -215,7 +230,8 @@ const TOURS = [
         planRooms: ['toilet-1'],
         initialView: view(),
         northOffset: 0,
-        links: [],
+        // The door back into the master bedroom
+        links: [{ to: 'master-bedroom', yaw: -78, pitch: -8 }],
         reference: {
           clip: 'docs/3bhk/Bathroom.mp4',
           visible:
