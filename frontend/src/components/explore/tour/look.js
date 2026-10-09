@@ -7,7 +7,7 @@
  */
 
 export const MIN_FOV = 35
-export const MAX_FOV = 110
+export const MAX_FOV = 135 // wide enough that the vertical cap, not this, limits a laptop screen
 export const MAX_VFOV = 100
 /** Autorotate speed, degrees per second. */
 export const AUTOROTATE_SPEED = 5
