@@ -18,7 +18,10 @@
  * Angles are calibrated for the generated panorama renders.
  */
 
-const view = (yaw = 0, pitch = 0, fov = 80) => ({ yaw, pitch, fov })
+import { MAX_FOV } from '@/components/explore/tour/look'
+
+// Every room opens fully zoomed out (the widest field the viewer allows).
+const view = (yaw = 0, pitch = 0, fov = MAX_FOV) => ({ yaw, pitch, fov })
 
 const TOURS = [
   {

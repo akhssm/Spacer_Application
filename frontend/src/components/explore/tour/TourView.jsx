@@ -72,7 +72,7 @@ export function TourView({ resolution }) {
   const [stripOpen, setStripOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [aboutOpen, setAboutOpen] = useState(false)
-  const [autorotate, setAutorotate] = useState(false)
+  const [autorotate, setAutorotate] = useState(true)
   const [hint, setHint] = useState(true)
   const [fullscreen, setFullscreen] = useState(false)
   const [copied, setCopied] = useState(false)
