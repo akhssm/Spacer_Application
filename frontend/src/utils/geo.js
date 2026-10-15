@@ -45,3 +45,21 @@ export function formatArea(sqMetres) {
 export function directionsUrl([lng, lat]) {
   return `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`
 }
+
+// Distance in metres between two [lng, lat] points along the ground (haversine)
+export function distanceMetres([lng1, lat1], [lng2, lat2]) {
+  const rad = (deg) => (deg * Math.PI) / 180
+  const a =
+    Math.sin(rad(lat2 - lat1) / 2) ** 2 + Math.cos(rad(lat1)) * Math.cos(rad(lat2)) * Math.sin(rad(lng2 - lng1) / 2) ** 2
+  return 2 * 6_371_008.8 * Math.asin(Math.sqrt(a))
+}
+
+// Total length of a line of [lng, lat] points, in metres
+export const lineMetres = (points) => points.slice(1).reduce((sum, point, i) => sum + distanceMetres(points[i], point), 0)
+
+// "84 m" under a kilometre, "1.25 km" beyond, with feet alongside for buyers who think in feet
+export function formatDistance(metres) {
+  const feet = Math.round(metres * 3.28084).toLocaleString('en-IN')
+  const main = metres < 1000 ? `${Math.round(metres)} m` : `${(metres / 1000).toFixed(2)} km`
+  return `${main} (${feet} ft)`
+}
